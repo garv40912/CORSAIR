@@ -1,0 +1,189 @@
+import type { ApiRequestOptions, OpenAPIConfig } from 'corsair/http';
+import {
+	ApiError,
+	BaseWebhookHandler,
+	request,
+	verifyHmacSignature,
+} from 'corsair/http';
+import type {
+	ResendEventMap,
+	ResendEventName,
+	ResendWebhookPayload,
+} from './webhooks/types';
+
+export class ResendAPIError extends Error {
+	constructor(
+		message: string,
+		public readonly code?: string,
+		public readonly status?: number,
+		public readonly body?: unknown,
+	) {
+		super(message);
+		this.name = 'ResendAPIError';
+	}
+}
+
+const RESEND_API_BASE = 'https://api.resend.com';
+
+export async function makeResendRequest<T>(
+	endpoint: string,
+	apiKey: string,
+	options: {
+		method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+		body?: unknown;
+		query?: Record<string, string | number | boolean | undefined>;
+	} = {},
+): Promise<T> {
+	const { method = 'GET', body, query } = options;
+
+	const config: OpenAPIConfig = {
+		BASE: RESEND_API_BASE,
+		VERSION: '1.0.0',
+		WITH_CREDENTIALS: false,
+		CREDENTIALS: 'omit',
+		TOKEN: apiKey,
+		HEADERS: {
+			'Content-Type': 'application/json',
+		},
+	};
+
+	const requestOptions: ApiRequestOptions = {
+		method,
+		url: endpoint,
+		body:
+			method === 'POST' || method === 'PUT' || method === 'PATCH'
+				? body
+				: undefined,
+		mediaType: 'application/json; charset=utf-8',
+		query: method === 'GET' ? query : undefined,
+	};
+
+	try {
+		const response = await request<T>(config, requestOptions);
+		return response;
+	} catch (error: any) {
+		if (error instanceof ApiError) {
+			const msg =
+				typeof error.body === 'object' && error.body && 'message' in error.body
+					? String((error.body as any).message)
+					: error.message;
+			throw new ResendAPIError(
+				msg || error.message,
+				(error.body as any)?.name || (error.body as any)?.code,
+				error.status,
+				error.body,
+			);
+		}
+		if (error instanceof Error) {
+			throw new ResendAPIError(error.message);
+		}
+		throw new ResendAPIError('Unknown error');
+	}
+}
+
+export type ResendEventHandler<T extends ResendEventName> = (
+	event: ResendEventMap[T],
+) => void | Promise<void>;
+
+export interface ResendWebhookHeaders {
+	'resend-signature'?: string;
+	'content-type'?: string;
+	[key: string]: string | undefined;
+}
+
+export interface ResendWebhookHandlerOptions {
+	secret?: string;
+}
+
+export interface HandleWebhookResult {
+	success: boolean;
+	eventType?: ResendEventName;
+	error?: string;
+}
+
+export class ResendWebhookHandler extends BaseWebhookHandler<
+	ResendEventName,
+	ResendEventMap[ResendEventName]
+> {
+	private secret?: string;
+
+	constructor(options: ResendWebhookHandlerOptions = {}) {
+		super();
+		this.secret = options.secret;
+	}
+
+	on<T extends ResendEventName>(
+		eventName: T,
+		handler: ResendEventHandler<T>,
+	): this {
+		return super.on(eventName, handler as any) as this;
+	}
+
+	off<T extends ResendEventName>(
+		eventName: T,
+		handler: ResendEventHandler<T>,
+	): this {
+		return super.off(eventName, handler as any) as this;
+	}
+
+	verifySignature(payload: string, signature: string): boolean {
+		if (!this.secret) {
+			return true;
+		}
+
+		return verifyHmacSignature(payload, this.secret, signature);
+	}
+
+	async handleWebhook(
+		headers: ResendWebhookHeaders,
+		payload: string | ResendWebhookPayload,
+	): Promise<HandleWebhookResult> {
+		const payloadString =
+			typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+		const parsedPayload: ResendWebhookPayload =
+			typeof payload === 'string' ? JSON.parse(payload) : payload;
+
+		if (this.secret) {
+			const signature = headers['resend-signature'];
+
+			if (!signature) {
+				return {
+					success: false,
+					error: 'Missing signature header',
+				};
+			}
+
+			const isValid = this.verifySignature(payloadString, signature);
+			if (!isValid) {
+				return {
+					success: false,
+					error: 'Invalid signature',
+				};
+			}
+		}
+
+		const eventType = parsedPayload.type as ResendEventName;
+		try {
+			await this.executeHandlers(eventType, parsedPayload as any);
+		} catch (error) {
+			return {
+				success: false,
+				eventType: eventType,
+				error:
+					error instanceof Error ? error.message : 'Handler execution failed',
+			};
+		}
+
+		return {
+			success: true,
+			eventType: eventType,
+		};
+	}
+}
+
+export function createWebhookHandler(
+	options?: ResendWebhookHandlerOptions,
+): ResendWebhookHandler {
+	return new ResendWebhookHandler(options);
+}

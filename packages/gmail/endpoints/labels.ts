@@ -1,0 +1,142 @@
+import { logEventFromContext } from 'corsair/core';
+import { makeAuthenticatedGmailRequest } from '../client';
+import type { GmailBoundEndpoints, GmailEndpoints } from '../index';
+import type { GmailEndpointOutputs } from './types';
+
+export const list: GmailEndpoints['labelsList'] = async (ctx, input) => {
+	const result = await makeAuthenticatedGmailRequest<
+		GmailEndpointOutputs['labelsList']
+	>(`/users/${input.userId || 'me'}/labels`, ctx, {
+		method: 'GET',
+	});
+
+	if (result.labels && ctx.db.labels) {
+		try {
+			for (const label of result.labels) {
+				if (label.id) {
+					// List entries carry only id, name, visibility and type, and upsert
+					// replaces the stored row, so merge them over what get stored.
+					const stored = await ctx.db.labels.findByEntityId(label.id);
+					await ctx.db.labels.upsertByEntityId(label.id, {
+						...stored?.data,
+						...label,
+						id: label.id,
+						createdAt: stored?.data.createdAt ?? new Date(),
+					});
+				}
+			}
+		} catch (error) {
+			console.warn('Failed to save labels to database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'gmail.labels.list',
+		{ ...input },
+		'completed',
+	);
+	return result;
+};
+
+export const get: GmailEndpoints['labelsGet'] = async (ctx, input) => {
+	const result = await makeAuthenticatedGmailRequest<
+		GmailEndpointOutputs['labelsGet']
+	>(`/users/${input.userId || 'me'}/labels/${input.id}`, ctx, {
+		method: 'GET',
+	});
+
+	if (result.id && ctx.db.labels) {
+		try {
+			await ctx.db.labels.upsertByEntityId(result.id, {
+				id: result.id,
+				name: result.name,
+				messageListVisibility: result.messageListVisibility,
+				labelListVisibility: result.labelListVisibility,
+				type: result.type,
+				messagesTotal: result.messagesTotal,
+				messagesUnread: result.messagesUnread,
+				threadsTotal: result.threadsTotal,
+				threadsUnread: result.threadsUnread,
+				createdAt: new Date(),
+			});
+		} catch (error) {
+			console.warn('Failed to save label to database:', error);
+		}
+	}
+
+	await logEventFromContext(ctx, 'gmail.labels.get', { ...input }, 'completed');
+	return result;
+};
+
+export const create: GmailEndpoints['labelsCreate'] = async (ctx, input) => {
+	const result = await makeAuthenticatedGmailRequest<
+		GmailEndpointOutputs['labelsCreate']
+	>(`/users/${input.userId || 'me'}/labels`, ctx, {
+		method: 'POST',
+		body: input.label,
+	});
+
+	if (result.id) {
+		const endpoints = ctx.endpoints as GmailBoundEndpoints;
+		await endpoints.labels.get({ id: result.id, userId: input.userId });
+	}
+
+	await logEventFromContext(
+		ctx,
+		'gmail.labels.create',
+		{ ...input },
+		'completed',
+	);
+	return result;
+};
+
+export const update: GmailEndpoints['labelsUpdate'] = async (ctx, input) => {
+	const result = await makeAuthenticatedGmailRequest<
+		GmailEndpointOutputs['labelsUpdate']
+	>(`/users/${input.userId || 'me'}/labels/${input.id}`, ctx, {
+		method: 'PUT',
+		body: input.label,
+	});
+
+	if (result.id) {
+		const endpoints = ctx.endpoints as GmailBoundEndpoints;
+		await endpoints.labels.get({ id: result.id, userId: input.userId });
+	}
+
+	await logEventFromContext(
+		ctx,
+		'gmail.labels.update',
+		{ ...input },
+		'completed',
+	);
+	return result;
+};
+
+export const deleteLabel: GmailEndpoints['labelsDelete'] = async (
+	ctx,
+	input,
+) => {
+	await makeAuthenticatedGmailRequest<GmailEndpointOutputs['labelsDelete']>(
+		`/users/${input.userId || 'me'}/labels/${input.id}`,
+		ctx,
+		{
+			method: 'DELETE',
+		},
+	);
+
+	if (ctx.db.labels) {
+		try {
+			await ctx.db.labels.deleteByEntityId(input.id);
+		} catch (error) {
+			console.warn('Failed to delete label from database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'gmail.labels.delete',
+		{ ...input },
+		'completed',
+	);
+};

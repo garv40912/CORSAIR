@@ -1,0 +1,71 @@
+import type {
+	ApiRequestOptions,
+	OpenAPIConfig,
+	RateLimitConfig,
+} from 'corsair/http';
+import { request } from 'corsair/http';
+
+export class OnedriveAPIError extends Error {
+	constructor(
+		message: string,
+		public readonly code?: string,
+	) {
+		super(message);
+		this.name = 'OnedriveAPIError';
+	}
+}
+
+const ONEDRIVE_API_BASE = 'https://graph.microsoft.com/v1.0';
+
+const ONEDRIVE_RATE_LIMIT_CONFIG: RateLimitConfig = {
+	enabled: true,
+	maxRetries: 3,
+	initialRetryDelay: 1000,
+	backoffMultiplier: 2,
+	headerNames: {
+		retryAfter: 'Retry-After',
+	},
+};
+
+export async function makeOnedriveRequest<T>(
+	endpoint: string,
+	token: string,
+	options: {
+		method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+		body?: Record<string, unknown>;
+		query?: Record<string, string | number | boolean | undefined>;
+		/** Return the body as bytes (`BinaryResponse`) instead of decoding it as text. */
+		responseType?: 'binary';
+	} = {},
+): Promise<T> {
+	const { method = 'GET', body, query, responseType } = options;
+
+	const config: OpenAPIConfig = {
+		BASE: ONEDRIVE_API_BASE,
+		VERSION: '1.0',
+		WITH_CREDENTIALS: false,
+		CREDENTIALS: 'omit',
+		TOKEN: token,
+		HEADERS: {
+			'Content-Type': 'application/json',
+		},
+	};
+
+	const requestOptions: ApiRequestOptions = {
+		method,
+		url: endpoint,
+		body:
+			method === 'POST' || method === 'PUT' || method === 'PATCH'
+				? body
+				: undefined,
+		mediaType: 'application/json; charset=utf-8',
+		query,
+		responseType,
+	};
+
+	const response = await request<T>(config, requestOptions, {
+		rateLimitConfig: ONEDRIVE_RATE_LIMIT_CONFIG,
+	});
+
+	return response;
+}

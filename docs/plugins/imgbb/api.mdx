@@ -1,0 +1,143 @@
+---
+title: "ImgBB API reference"
+sidebarTitle: "API"
+description: "API reference for the ImgBB plugin in Corsair: every `imgbb.api.*` operation with its input and output types, taken from the plugin's Zod schemas."
+---
+
+<Info>
+**New to Corsair?** See [API access](/concepts/api), [authentication](/concepts/auth), and [error handling](/concepts/error-handling).
+</Info>
+
+## Auth
+
+### getApiKey
+
+`auth.getApiKey`
+
+Confirm an ImgBB API key is configured for this account and return a masked preview of it
+
+**Risk:** `read`
+
+```ts
+await corsair.imgbb.api.auth.getApiKey({});
+```
+
+**Input:** _empty object_
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `configured` | `boolean` | Yes | Whether an ImgBB API key is configured for this account |
+| `keyPreview` | `string` | Yes | Last 4 characters of the configured key, for identification only |
+
+
+
+---
+
+## Images
+
+### upload
+
+`images.upload`
+
+Upload an image to ImgBB and return the hosted image URLs and metadata. Takes the image as a public link, base64 or a Blob; on Corsair, pass a Files id.
+
+**Risk:** `write`
+
+```ts
+await corsair.imgbb.api.images.upload({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `image` | `string \| object \| custom` | Yes | The image, up to 32 MB per the ImgBB API: a public URL or base64 string (ImgBB fetches a link itself), &#123;url, filename?, contentType?&#125;, or &#123;base64, filename?, contentType?&#125;; binary data (Blob, File, Buffer, Uint8Array) from TypeScript. On Corsair, pass a Files id (fil_…). |
+| `name` | `string` | No | Optional display name for the file |
+| `expiration` | `number` | No | Optional auto-delete window in seconds (60-15552000). Omit to keep the image indefinitely. |
+
+<AccordionGroup>
+<Accordion title="image full type">
+
+```ts
+string | {
+  url: string,
+  filename?: string,
+  contentType?: string
+} | {
+  base64: string,
+  filename?: string,
+  contentType?: string
+} | custom | custom | custom
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | Yes | — |
+| `title` | `string` | No | — |
+| `url_viewer` | `string` | No | — |
+| `url` | `string` | Yes | — |
+| `display_url` | `string` | No | — |
+| `width` | `number` | No | — |
+| `height` | `number` | No | — |
+| `size` | `number` | No | — |
+| `time` | `number` | No | — |
+| `expiration` | `number` | No | — |
+| `image` | `object` | No | — |
+| `thumb` | `object` | No | — |
+| `medium` | `object` | No | — |
+| `delete_url` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="image full type">
+
+```ts
+{
+  filename?: string,
+  name?: string,
+  mime?: string,
+  extension?: string,
+  url: string
+}
+```
+</Accordion>
+
+<Accordion title="thumb full type">
+
+```ts
+{
+  filename?: string,
+  name?: string,
+  mime?: string,
+  extension?: string,
+  url: string
+}
+```
+</Accordion>
+
+<Accordion title="medium full type">
+
+```ts
+{
+  filename?: string,
+  name?: string,
+  mime?: string,
+  extension?: string,
+  url: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+

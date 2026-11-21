@@ -1,0 +1,617 @@
+import type {
+	Expression,
+	ExpressionBuilder,
+	Kysely,
+	SelectQueryBuilder,
+	SqlBool,
+} from 'kysely';
+import { SqliteAdapter, sql } from 'kysely';
+import type { ZodTypeAny } from 'zod';
+import { z } from 'zod';
+
+import { decryptDEK } from '../../core/auth/encryption';
+import { generateUUID } from '../../core/utils';
+import { openJson, sealJson } from '../data-at-rest';
+import type { CorsairEntity } from '../index';
+import type { PluginEntityClient, TypedEntity } from '../orm';
+import type { CorsairKyselyDatabase } from './database';
+import {
+	jsonbBooleanField,
+	jsonbNumberField,
+	jsonbTextField,
+	jsonbTimestampField,
+} from './postgres';
+import { jsonNumberField, jsonTimestampField } from './sqlite';
+
+/**
+ * How a JSON `data` field is read in SQL. Postgres casts the `->>` text
+ * (`::numeric`, `::boolean`, `::timestamptz`); SQLite has none of those casts,
+ * so it reads with json_extract, and compares booleans with 1/0 because
+ * better-sqlite3 cannot bind a JS boolean. Text reads with `->>` on both.
+ */
+type JsonFieldSql = {
+	number: (key: string) => ReturnType<typeof jsonbNumberField>;
+	booleanEquals: (key: string, value: boolean) => Expression<SqlBool>;
+	timestamp: (key: string) => ReturnType<typeof jsonbTimestampField>;
+};
+
+const POSTGRES_FIELDS: JsonFieldSql = {
+	number: (key) => jsonbNumberField(key),
+	booleanEquals: (key, value) =>
+		sql<SqlBool>`${jsonbBooleanField(key)} = ${value}`,
+	timestamp: (key) => jsonbTimestampField(key),
+};
+
+const SQLITE_FIELDS: JsonFieldSql = {
+	number: (key) => jsonNumberField(key),
+	booleanEquals: (key, value) =>
+		sql<SqlBool>`json_extract(data, ${`$.${key}`}) = ${value ? 1 : 0}`,
+	timestamp: (key) => jsonTimestampField(key),
+};
+
+/**
+ * Reads the dialect from the instance itself, so a Kysely the caller built
+ * with a SQLite dialect gets SQLite SQL too (createCorsairDatabase assumes
+ * Postgres for those).
+ */
+function jsonFieldSql(db: Kysely<CorsairKyselyDatabase>): JsonFieldSql {
+	return db.getExecutor().adapter instanceof SqliteAdapter
+		? SQLITE_FIELDS
+		: POSTGRES_FIELDS;
+}
+
+type EntityQueryBuilder = SelectQueryBuilder<
+	CorsairKyselyDatabase,
+	'corsair_entities',
+	CorsairEntity
+>;
+
+// unknown: postgres returns JSONB as an object; sqlite returns the same cell as text.
+function parseJsonLike(value: unknown): unknown {
+	if (typeof value === 'string') {
+		try {
+			return JSON.parse(value);
+		} catch {
+			return value;
+		}
+	}
+	return value;
+}
+
+type DataFieldType = 'string' | 'number' | 'boolean' | 'date';
+
+function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
+	let current = schema;
+	while (current) {
+		if (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
+			current = current._def.innerType as ZodTypeAny;
+			continue;
+		}
+		if (current instanceof z.ZodDefault) {
+			current = current._def.innerType as ZodTypeAny;
+			continue;
+		}
+		break;
+	}
+	return current;
+}
+
+// unknown: enum and literal values can be any primitive; typeof sorts them.
+function literalFieldType(value: unknown): DataFieldType | undefined {
+	if (typeof value === 'string') return 'string';
+	if (typeof value === 'number') return 'number';
+	if (typeof value === 'boolean') return 'boolean';
+	return undefined;
+}
+
+function sameFieldType(
+	types: (DataFieldType | undefined)[],
+): DataFieldType | undefined {
+	const [first] = types;
+	return first && types.every((t) => t === first) ? first : undefined;
+}
+
+/**
+ * Enums, literals and unions whose members share one primitive type filter as
+ * that type, matching the filters `inspect` advertises for them. Without this a
+ * numeric literal union (`0 | 1 | 2`) fell back to string filters, which drop
+ * `gt` and numeric `equals` and return every row.
+ */
+function getFieldType(schema: ZodTypeAny): DataFieldType | undefined {
+	const unwrapped = unwrapSchema(schema);
+	if (unwrapped instanceof z.ZodString) return 'string';
+	if (unwrapped instanceof z.ZodNumber) return 'number';
+	if (unwrapped instanceof z.ZodBoolean) return 'boolean';
+	if (unwrapped instanceof z.ZodDate) return 'date';
+	if (unwrapped instanceof z.ZodEnum) {
+		return sameFieldType(unwrapped.options.map(literalFieldType));
+	}
+	if (unwrapped instanceof z.ZodLiteral) {
+		return sameFieldType([...unwrapped.values].map(literalFieldType));
+	}
+	if (unwrapped instanceof z.ZodUnion) {
+		return sameFieldType(
+			unwrapped.options
+				.filter((option) => !(option instanceof z.ZodNull))
+				.map((option) => getFieldType(option as ZodTypeAny)),
+		);
+	}
+	return undefined;
+}
+
+/** Which filter each entity field takes. Exported for tests. */
+export function getDataFieldTypes(
+	schema: ZodTypeAny,
+): Record<string, DataFieldType> {
+	const unwrapped = unwrapSchema(schema);
+	if (!(unwrapped instanceof z.ZodObject)) return {};
+	const shape = unwrapped.shape;
+	const fieldTypes: Record<string, DataFieldType> = {};
+	for (const [key, fieldSchema] of Object.entries(shape)) {
+		const fieldType = getFieldType(fieldSchema as ZodTypeAny);
+		if (fieldType) fieldTypes[key] = fieldType;
+	}
+	return fieldTypes;
+}
+
+function applyStringFilter(
+	q: EntityQueryBuilder,
+	expr: ReturnType<typeof jsonbTextField>,
+	filterValue: unknown,
+) {
+	if (typeof filterValue === 'string') {
+		return q.where(expr, '=', filterValue);
+	}
+	if (
+		typeof filterValue === 'object' &&
+		filterValue !== null &&
+		!Array.isArray(filterValue)
+	) {
+		const obj = filterValue as Record<string, unknown>;
+		if ('equals' in obj && typeof obj.equals === 'string') {
+			q = q.where(expr, '=', obj.equals);
+		}
+		if ('contains' in obj && typeof obj.contains === 'string') {
+			q = q.where(expr, 'like', `%${obj.contains}%`);
+		}
+		if ('startsWith' in obj && typeof obj.startsWith === 'string') {
+			q = q.where(expr, 'like', `${obj.startsWith}%`);
+		}
+		if ('endsWith' in obj && typeof obj.endsWith === 'string') {
+			q = q.where(expr, 'like', `%${obj.endsWith}`);
+		}
+		if ('in' in obj && Array.isArray(obj.in)) {
+			q = q.where(expr, 'in', obj.in as string[]);
+		}
+	}
+	return q;
+}
+
+function applyNumberFilter(
+	q: EntityQueryBuilder,
+	expr: ReturnType<typeof jsonbNumberField>,
+	filterValue: unknown,
+) {
+	if (typeof filterValue === 'number') {
+		return q.where(expr, '=', filterValue);
+	}
+	if (
+		typeof filterValue === 'object' &&
+		filterValue !== null &&
+		!Array.isArray(filterValue)
+	) {
+		const obj = filterValue as Record<string, unknown>;
+		if (typeof obj.equals === 'number') q = q.where(expr, '=', obj.equals);
+		if (typeof obj.gt === 'number') q = q.where(expr, '>', obj.gt);
+		if (typeof obj.gte === 'number') q = q.where(expr, '>=', obj.gte);
+		if (typeof obj.lt === 'number') q = q.where(expr, '<', obj.lt);
+		if (typeof obj.lte === 'number') q = q.where(expr, '<=', obj.lte);
+		if (Array.isArray(obj.in)) q = q.where(expr, 'in', obj.in as number[]);
+	}
+	return q;
+}
+
+function applyBooleanFilter(
+	q: EntityQueryBuilder,
+	equals: (value: boolean) => Expression<SqlBool>,
+	filterValue: unknown,
+) {
+	if (typeof filterValue === 'boolean') {
+		return q.where(equals(filterValue));
+	}
+	if (
+		typeof filterValue === 'object' &&
+		filterValue !== null &&
+		!Array.isArray(filterValue)
+	) {
+		const obj = filterValue as Record<string, unknown>;
+		if (typeof obj.equals === 'boolean') q = q.where(equals(obj.equals));
+	}
+	return q;
+}
+
+function applyDateFilter(
+	q: EntityQueryBuilder,
+	expr: ReturnType<typeof jsonbTimestampField>,
+	filterValue: unknown,
+) {
+	if (filterValue instanceof Date) {
+		return q.where(expr, '=', filterValue);
+	}
+	if (
+		typeof filterValue === 'object' &&
+		filterValue !== null &&
+		!Array.isArray(filterValue)
+	) {
+		const obj = filterValue as Record<string, unknown>;
+		if (obj.equals instanceof Date) q = q.where(expr, '=', obj.equals);
+		if (obj.before instanceof Date) q = q.where(expr, '<', obj.before);
+		if (obj.after instanceof Date) q = q.where(expr, '>', obj.after);
+		if (Array.isArray(obj.between) && obj.between.length === 2) {
+			const [start, end] = obj.between;
+			if (start instanceof Date) q = q.where(expr, '>=', start);
+			if (end instanceof Date) q = q.where(expr, '<=', end);
+		}
+	}
+	return q;
+}
+
+function applyDataFilter(
+	q: EntityQueryBuilder,
+	fields: JsonFieldSql,
+	key: string,
+	fieldType: DataFieldType,
+	filterValue: unknown,
+) {
+	if (fieldType === 'number') {
+		return applyNumberFilter(q, fields.number(key), filterValue);
+	}
+	if (fieldType === 'boolean') {
+		return applyBooleanFilter(
+			q,
+			(value) => fields.booleanEquals(key, value),
+			filterValue,
+		);
+	}
+	if (fieldType === 'date') {
+		return applyDateFilter(q, fields.timestamp(key), filterValue);
+	}
+	return applyStringFilter(q, jsonbTextField(key), filterValue);
+}
+
+function applyEntityFieldFilter(
+	q: EntityQueryBuilder,
+	key: keyof CorsairEntity,
+	filterValue: unknown,
+) {
+	if (
+		typeof filterValue === 'object' &&
+		filterValue !== null &&
+		!Array.isArray(filterValue)
+	) {
+		const obj = filterValue as Record<string, unknown>;
+		if ('equals' in obj) q = q.where(key, '=', obj.equals as any);
+		if ('contains' in obj && typeof obj.contains === 'string') {
+			q = q.where(key, 'like', `%${obj.contains}%`);
+		}
+		if ('startsWith' in obj && typeof obj.startsWith === 'string') {
+			q = q.where(key, 'like', `${obj.startsWith}%`);
+		}
+		if ('endsWith' in obj && typeof obj.endsWith === 'string') {
+			q = q.where(key, 'like', `%${obj.endsWith}`);
+		}
+		if ('in' in obj && Array.isArray(obj.in)) {
+			q = q.where(key, 'in', obj.in as any[]);
+		}
+		return q;
+	}
+	return q.where(key, '=', filterValue as any);
+}
+
+function parseCountValue(countVal: unknown): number {
+	if (typeof countVal === 'number') return countVal;
+	if (typeof countVal === 'bigint') return Number(countVal);
+	return Number.parseInt(String(countVal ?? 0), 10);
+}
+
+function accountIn(
+	eb: ExpressionBuilder<CorsairKyselyDatabase, 'corsair_entities'>,
+	accountId: string | string[],
+) {
+	return Array.isArray(accountId)
+		? eb('account_id', 'in', accountId)
+		: eb('account_id', '=', accountId);
+}
+
+function baseQuery(
+	db: Kysely<CorsairKyselyDatabase>,
+	accountId: string | string[],
+	entityTypeName: string,
+): EntityQueryBuilder {
+	const q = db
+		.selectFrom('corsair_entities')
+		.selectAll()
+		.where((eb) => accountIn(eb, accountId))
+		.where('entity_type', '=', entityTypeName);
+	// A merged set needs a stable order for limit/offset to page it.
+	return Array.isArray(accountId) ? q.orderBy('created_at').orderBy('id') : q;
+}
+
+export type EntityDataAtRest = {
+	encryptDataAtRest: true;
+	kek: string;
+};
+
+export function createKyselyEntityClient<DataSchema extends ZodTypeAny>(
+	db: Kysely<CorsairKyselyDatabase>,
+	getAccountId: () => Promise<string>,
+	entityTypeName: string,
+	version: string,
+	dataSchema: DataSchema,
+	atRest?: EntityDataAtRest,
+	// Reads span these accounts when there are 2+; writes always use getAccountId.
+	fanOut?: () => Promise<{ id: string; label?: string }[]>,
+): PluginEntityClient<DataSchema> {
+	const dataFieldTypes = getDataFieldTypes(dataSchema);
+	// Successful unwraps only. A missing or rejected key is not stored, and a
+	// rotated wrapped DEK misses this cache because the ciphertext changed.
+	const dekCache = new Map<string, { wrapped: string; dek: string }>();
+
+	const accountDek = async (accountId: string): Promise<string> => {
+		if (!atRest?.kek) {
+			throw new Error('encryptDataAtRest requires kek');
+		}
+		const row = await db
+			.selectFrom('corsair_accounts')
+			.select('dek')
+			.where('id', '=', accountId)
+			.executeTakeFirst();
+		if (!row?.dek) {
+			throw new Error(
+				`No DEK found for account "${accountId}". Initialize the account first.`,
+			);
+		}
+		const cached = dekCache.get(accountId);
+		if (cached && cached.wrapped === row.dek) return cached.dek;
+		const dek = await decryptDEK(row.dek, atRest.kek);
+		dekCache.set(accountId, { wrapped: row.dek, dek });
+		return dek;
+	};
+
+	async function parseRow(
+		row: CorsairEntity,
+		dek?: string,
+	): Promise<TypedEntity<DataSchema>> {
+		let data = parseJsonLike(row.data);
+		if (atRest)
+			data = openJson(data, dek ?? (await accountDek(row.account_id)));
+		return {
+			...row,
+			data: dataSchema.parse(data),
+		} as TypedEntity<DataSchema>;
+	}
+
+	// Account ids to read from, plus row tags when the read spans 2+ accounts.
+	async function readScope(): Promise<{
+		ids: string | string[];
+		labels?: Map<string, string>;
+	}> {
+		const accounts = fanOut ? await fanOut() : [];
+		if (accounts.length < 2) return { ids: await getAccountId() };
+		return {
+			ids: accounts.map((a) => a.id),
+			labels: new Map(accounts.map((a) => [a.id, a.label ?? a.id])),
+		};
+	}
+
+	// Same entity_id in several accounts: the oldest account wins (ids are in
+	// that order), regardless of row timestamps.
+	async function findOldest(entityId: string) {
+		const { ids, labels } = await readScope();
+		const q = baseQuery(db, ids, entityTypeName).where(
+			'entity_id',
+			'=',
+			entityId,
+		);
+		const rows = await q.execute();
+		if (!Array.isArray(ids)) return { row: rows[0], labels };
+		rows.sort((a, b) => ids.indexOf(a.account_id) - ids.indexOf(b.account_id));
+		return { row: rows[0], labels };
+	}
+
+	async function parseRows(
+		rows: CorsairEntity[],
+		labels?: Map<string, string>,
+	): Promise<TypedEntity<DataSchema>[]> {
+		const deks = new Map<string, string>();
+		if (atRest) {
+			await Promise.all(
+				[...new Set(rows.map((r) => r.account_id))].map(async (id) =>
+					deks.set(id, await accountDek(id)),
+				),
+			);
+		}
+		return Promise.all(
+			rows.map(async (row) => {
+				const parsed = await parseRow(row, deks.get(row.account_id));
+				const account = labels?.get(row.account_id);
+				return account ? { ...parsed, account } : parsed;
+			}),
+		);
+	}
+
+	async function storedData(
+		accountId: string,
+		// unknown: this is the parsed output of a caller-supplied plugin schema.
+		// The schema is not in scope here, so the JSONB document cannot be named more tightly.
+		data: unknown,
+	): Promise<Record<string, unknown>> {
+		if (!atRest) {
+			// unknown: same document. Zod's output is not a Record even though the column stores an object.
+			return data as Record<string, unknown>;
+		}
+		return sealJson(data, await accountDek(accountId));
+	}
+
+	return {
+		findByEntityId: async (entityId) => {
+			const { row, labels } = await findOldest(entityId);
+			return row ? (await parseRows([row], labels))[0]! : null;
+		},
+
+		existsByEntityId: async (entityId) => {
+			const { ids } = await readScope();
+			const row = await baseQuery(db, ids, entityTypeName)
+				.select('id')
+				.where('entity_id', '=', entityId)
+				.executeTakeFirst();
+			return row !== undefined;
+		},
+
+		findIdByEntityId: async (entityId) => {
+			const { row } = await findOldest(entityId);
+			return row?.id ?? null;
+		},
+
+		findById: async (id) => {
+			const { ids, labels } = await readScope();
+			const row = await baseQuery(db, ids, entityTypeName)
+				.where('id', '=', id)
+				.executeTakeFirst();
+			return row ? (await parseRows([row], labels))[0]! : null;
+		},
+
+		findManyByEntityIds: async (entityIds) => {
+			if (entityIds.length === 0) return [];
+			const { ids, labels } = await readScope();
+			const rows = await baseQuery(db, ids, entityTypeName)
+				.where('entity_id', 'in', entityIds)
+				.execute();
+			return parseRows(rows, labels);
+		},
+
+		list: async (options) => {
+			const { ids, labels } = await readScope();
+			let q = baseQuery(db, ids, entityTypeName);
+			if (typeof options?.limit === 'number') q = q.limit(options.limit);
+			if (typeof options?.offset === 'number') q = q.offset(options.offset);
+			const rows = await q.execute();
+			return parseRows(rows, labels);
+		},
+
+		search: async (options) => {
+			if (
+				atRest &&
+				options.data &&
+				typeof options.data === 'object' &&
+				Object.keys(options.data).length > 0
+			) {
+				throw new Error(
+					'Entity JSON field search cannot run while encryptDataAtRest is enabled. The stored document is ciphertext.',
+				);
+			}
+			const { ids, labels } = await readScope();
+			let q = baseQuery(db, ids, entityTypeName);
+
+			const reservedKeys = new Set(['data', 'limit', 'offset']);
+			for (const [key, filterValue] of Object.entries(options)) {
+				if (reservedKeys.has(key) || filterValue === undefined) continue;
+				q = applyEntityFieldFilter(q, key as keyof CorsairEntity, filterValue);
+			}
+
+			if (options.data && typeof options.data === 'object') {
+				for (const [key, filterValue] of Object.entries(options.data)) {
+					if (filterValue === undefined) continue;
+					const fieldType = dataFieldTypes[key] ?? 'string';
+					q = applyDataFilter(q, jsonFieldSql(db), key, fieldType, filterValue);
+				}
+			}
+
+			if (typeof options.limit === 'number') q = q.limit(options.limit);
+			if (typeof options.offset === 'number') q = q.offset(options.offset);
+
+			const rows = await q.execute();
+			return parseRows(rows, labels);
+		},
+
+		upsertByEntityId: async (entityId, data) => {
+			const accountId = await getAccountId();
+			const parsed = dataSchema.parse(data);
+			const dataToStore = await storedData(accountId, parsed);
+			const now = new Date();
+
+			const existing = await baseQuery(db, accountId, entityTypeName)
+				.select('id')
+				.where('entity_id', '=', entityId)
+				.executeTakeFirst();
+
+			if (existing?.id) {
+				const updated = await db
+					.updateTable('corsair_entities')
+					.set({
+						version,
+						data: dataToStore,
+						updated_at: now,
+					})
+					.where('id', '=', existing.id)
+					.returningAll()
+					.executeTakeFirstOrThrow();
+				return parseRow(updated);
+			}
+
+			const id = generateUUID();
+			const inserted = await db
+				.insertInto('corsair_entities')
+				.values({
+					id,
+					created_at: now,
+					updated_at: now,
+					account_id: accountId,
+					entity_id: entityId,
+					entity_type: entityTypeName,
+					version,
+					data: dataToStore,
+				})
+				.returningAll()
+				.executeTakeFirstOrThrow();
+			return parseRow(inserted);
+		},
+
+		deleteById: async (id) => {
+			const accountId = await getAccountId();
+			const res = await db
+				.deleteFrom('corsair_entities')
+				.where('account_id', '=', accountId)
+				.where('entity_type', '=', entityTypeName)
+				.where('id', '=', id)
+				.executeTakeFirst();
+			return (
+				Number((res as { numDeletedRows?: bigint | number }).numDeletedRows) > 0
+			);
+		},
+
+		deleteByEntityId: async (entityId) => {
+			const accountId = await getAccountId();
+			const res = await db
+				.deleteFrom('corsair_entities')
+				.where('account_id', '=', accountId)
+				.where('entity_type', '=', entityTypeName)
+				.where('entity_id', '=', entityId)
+				.executeTakeFirst();
+			return (
+				Number((res as { numDeletedRows?: bigint | number }).numDeletedRows) > 0
+			);
+		},
+
+		count: async () => {
+			const { ids } = await readScope();
+			const row = await db
+				.selectFrom('corsair_entities')
+				.select((eb) => eb.fn.countAll().as('count'))
+				.where((eb) => accountIn(eb, ids))
+				.where('entity_type', '=', entityTypeName)
+				.executeTakeFirst();
+			return parseCountValue((row as { count?: unknown })?.count);
+		},
+	};
+}

@@ -1,0 +1,63 @@
+import { TRPCError } from '@trpc/server';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { contributorSeoText } from '@/lib/page-seo';
+import { socialMetadata } from '@/lib/social-metadata';
+import { getCachedContributorProfile } from '@/server/oss-public-cache';
+import { ContributorProfile } from '../../contributor-profile';
+
+type PageProps = {
+	params: Promise<{ username: string }>;
+};
+
+export async function generateMetadata({
+	params,
+}: PageProps): Promise<Metadata> {
+	const { username } = await params;
+
+	try {
+		const profile = await getCachedContributorProfile(username.toLowerCase());
+		const { title, description, indexable } = contributorSeoText({
+			name: profile.name,
+			githubUsername: profile.githubUsername,
+			integrationCount: profile.integrations.length,
+		});
+		const path = `/oss/u/${username.toLowerCase()}`;
+		return {
+			title,
+			description,
+			alternates: { canonical: path },
+			...(indexable ? {} : { robots: { index: false, follow: true } }),
+			...socialMetadata({ title: `${title} | Corsair`, description, path }),
+		};
+	} catch {
+		return { title: 'Contributor not found' };
+	}
+}
+
+export default async function ContributorProfilePage({ params }: PageProps) {
+	const { username } = await params;
+
+	let profile;
+	try {
+		profile = await getCachedContributorProfile(username.toLowerCase());
+	} catch (error) {
+		if (error instanceof TRPCError && error.code === 'NOT_FOUND') {
+			notFound();
+		}
+		throw error;
+	}
+
+	return (
+		<main>
+			<Link
+				href="/oss"
+				className="mb-4 inline-flex items-center gap-1.5 font-[family-name:var(--font-landing-mono)] text-[12px] text-[#1c1c1c66] no-underline transition-colors hover:text-[#1c1c1c]"
+			>
+				← All integrations
+			</Link>
+			<ContributorProfile profile={profile} />
+		</main>
+	);
+}

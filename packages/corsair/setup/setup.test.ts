@@ -1,0 +1,336 @@
+// @ts-expect-error - better-sqlite3 types may not be available
+
+import { linear } from '@corsair-dev/linear';
+import { slack } from '@corsair-dev/slack';
+import Database from 'better-sqlite3';
+import { Kysely, SqliteDialect } from 'kysely';
+import { z } from 'zod';
+import type { CorsairPlugin } from '../core';
+import { createCorsair } from '../core';
+import type { CorsairKyselyDatabase } from '../db/kysely/database';
+import { SqliteDatePlugin } from '../db/kysely/sqlite-date-plugin';
+import { setupCorsair } from './index';
+
+function createTestDb() {
+	const sqlite = new Database(':memory:');
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS corsair_integrations (
+			id TEXT PRIMARY KEY,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			name TEXT NOT NULL,
+			config TEXT NOT NULL,
+			dek TEXT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS corsair_accounts (
+			id TEXT PRIMARY KEY,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL,
+			integration_id TEXT NOT NULL,
+			config TEXT NOT NULL,
+			dek TEXT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS corsair_entities (
+			id TEXT PRIMARY KEY,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			account_id TEXT NOT NULL,
+			entity_id TEXT NOT NULL,
+			entity_type TEXT NOT NULL,
+			version TEXT NOT NULL,
+			data TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS corsair_events (
+			id TEXT PRIMARY KEY,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			account_id TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			payload TEXT NOT NULL,
+			status TEXT
+		);
+
+		CREATE INDEX IF NOT EXISTS corsair_events_account_type_created_idx
+			ON corsair_events (account_id, event_type, created_at);
+
+		CREATE TABLE IF NOT EXISTS corsair_permissions (
+			id TEXT PRIMARY KEY,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			account_id TEXT NOT NULL,
+			endpoint TEXT NOT NULL,
+			status TEXT NOT NULL
+		);
+	`);
+
+	const db = new Kysely<CorsairKyselyDatabase>({
+		dialect: new SqliteDialect({ database: sqlite }),
+		plugins: [new SqliteDatePlugin()],
+	});
+
+	return {
+		db,
+		cleanup: () => {
+			db.destroy();
+			sqlite.close();
+		},
+	};
+}
+
+describe('setupCorsair', () => {
+	let testDb: ReturnType<typeof createTestDb>;
+
+	beforeEach(() => {
+		testDb = createTestDb();
+	});
+
+	afterEach(() => {
+		testDb.cleanup();
+	});
+
+	it('creates integration and account rows for each plugin', async () => {
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack(), linear()],
+			database: testDb.db,
+		});
+
+		await setupCorsair(corsair);
+
+		const integrations = await testDb.db
+			.selectFrom('corsair_integrations')
+			.selectAll()
+			.execute();
+
+		expect(integrations).toHaveLength(2);
+		expect(integrations.map((i) => i.name)).toContain('slack');
+		expect(integrations.map((i) => i.name)).toContain('linear');
+
+		const accounts = await testDb.db
+			.selectFrom('corsair_accounts')
+			.selectAll()
+			.execute();
+
+		expect(accounts).toHaveLength(2);
+		expect(accounts.every((a) => a.tenant_id === 'default')).toBe(true);
+	});
+
+	it('issues DEKs for integrations and accounts', async () => {
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack()],
+			database: testDb.db,
+		});
+
+		await setupCorsair(corsair);
+
+		const [integration] = await testDb.db
+			.selectFrom('corsair_integrations')
+			.selectAll()
+			.execute();
+
+		expect(integration?.dek).toBeTruthy();
+
+		const [account] = await testDb.db
+			.selectFrom('corsair_accounts')
+			.selectAll()
+			.execute();
+
+		expect(account?.dek).toBeTruthy();
+	});
+
+	it('is idempotent — running twice does not create duplicate rows', async () => {
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack()],
+			database: testDb.db,
+		});
+
+		await setupCorsair(corsair);
+		await setupCorsair(corsair);
+
+		const integrations = await testDb.db
+			.selectFrom('corsair_integrations')
+			.selectAll()
+			.execute();
+
+		expect(integrations).toHaveLength(1);
+
+		const accounts = await testDb.db
+			.selectFrom('corsair_accounts')
+			.selectAll()
+			.execute();
+
+		expect(accounts).toHaveLength(1);
+	});
+
+	it('warns (not throws) when a required table is missing', async () => {
+		const sqlite = new Database(':memory:');
+		// Only create integrations — leave out the rest
+		sqlite.exec(`
+			CREATE TABLE corsair_integrations (
+				id TEXT PRIMARY KEY,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				name TEXT NOT NULL,
+				config TEXT NOT NULL,
+				dek TEXT NULL
+			);
+			CREATE TABLE corsair_accounts (
+				id TEXT PRIMARY KEY,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				tenant_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				config TEXT NOT NULL,
+				dek TEXT NULL
+			);
+		`);
+		const partialDb = new Kysely<CorsairKyselyDatabase>({
+			dialect: new SqliteDialect({ database: sqlite }),
+			plugins: [new SqliteDatePlugin()],
+		});
+
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack()],
+			database: partialDb,
+		});
+
+		const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+		// Should not throw even though some tables are missing
+		const result = await setupCorsair(corsair);
+		expect(typeof result).toBe('string');
+
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('corsair_entities'),
+		);
+
+		warnSpy.mockRestore();
+		await partialDb.destroy();
+		sqlite.close();
+	});
+
+	it('creates account rows for an explicit tenant on multi-tenant instances', async () => {
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack()],
+			database: testDb.db,
+			multiTenancy: true,
+		});
+
+		await setupCorsair(corsair, { tenantId: 'acme' });
+
+		const accounts = await testDb.db
+			.selectFrom('corsair_accounts')
+			.selectAll()
+			.execute();
+
+		expect(accounts).toHaveLength(1);
+		expect(accounts[0]?.tenant_id).toBe('acme');
+	});
+
+	it('auto-provisions account rows when accessing a new tenant without setupCorsair', async () => {
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [slack({ authType: 'api_key' })],
+			database: testDb.db,
+			multiTenancy: true,
+		});
+
+		await corsair.withTenant('lazy-tenant').slack.keys.get_api_key();
+
+		const accounts = await testDb.db
+			.selectFrom('corsair_accounts')
+			.selectAll()
+			.where('tenant_id', '=', 'lazy-tenant')
+			.execute();
+
+		expect(accounts).toHaveLength(1);
+	});
+
+	it('rejects tenant-scoped writes to integration-level credentials', async () => {
+		const oauthPlugin = {
+			id: 'test-oauth',
+			options: { authType: 'oauth_2' },
+		} satisfies CorsairPlugin;
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [oauthPlugin],
+			database: testDb.db,
+			multiTenancy: true,
+		});
+
+		await expect(
+			setupCorsair(corsair, {
+				tenantId: 'acme',
+				credentials: {
+					'test-oauth': { client_id: 'client-id' },
+				},
+			}),
+		).rejects.toThrow('integration-level credential shared across all tenants');
+	});
+
+	it('backfill writes through a client that keeps encryptDataAtRest', async () => {
+		const plugin = {
+			id: 'slack' as const,
+			options: { authType: 'api_key' as const },
+			schema: {
+				version: '1',
+				entities: {
+					channels: z.object({ title: z.string() }),
+				},
+			},
+			endpoints: {
+				channels: {
+					list: async (ctx: {
+						db: {
+							channels: {
+								upsertByEntityId: (
+									id: string,
+									data: { title: string },
+								) => Promise<{ data: { title: string } }>;
+							};
+						};
+					}) => {
+						await ctx.db.channels.upsertByEntityId('c1', {
+							title: 'backfill secret',
+						});
+					},
+				},
+			},
+		};
+		const corsair = createCorsair({
+			kek: 'test-kek-32-chars-long-padding-x',
+			plugins: [plugin],
+			database: testDb.db,
+			encryptDataAtRest: true,
+		});
+
+		await setupCorsair(corsair, { silent: true });
+		await corsair.slack.keys.set_api_key('token');
+		const output = await setupCorsair(corsair, {
+			backfill: true,
+			silent: true,
+		});
+
+		expect(output).not.toContain('channels.list failed');
+		const row = await testDb.db
+			.selectFrom('corsair_entities')
+			.selectAll()
+			.executeTakeFirstOrThrow();
+		// unknown: sqlite returns the JSON cell as text. It is a seal envelope or a document.
+		const data: unknown =
+			typeof row.data === 'string'
+				? (JSON.parse(row.data) as unknown)
+				: row.data;
+		expect(data).toEqual({ _corsair_enc: expect.any(String) });
+		expect(JSON.stringify(data)).not.toContain('backfill secret');
+	});
+});

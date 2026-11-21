@@ -1,0 +1,738 @@
+---
+title: "Dropbox API reference"
+sidebarTitle: "API"
+description: "API reference for the Dropbox plugin in Corsair: every `dropbox.api.*` operation with its input and output types, taken from the plugin's Zod schemas."
+---
+
+<Info>
+**New to Corsair?** See [API access](/concepts/api), [authentication](/concepts/auth), and [error handling](/concepts/error-handling).
+</Info>
+
+## Files
+
+### copy
+
+`files.copy`
+
+Copy a file to a new location
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.files.copy({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `from_path` | `string` | Yes | — |
+| `to_path` | `string` | Yes | — |
+| `allow_shared_folder` | `boolean` | No | — |
+| `autorename` | `boolean` | No | — |
+| `allow_ownership_transfer` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### delete
+
+`files.delete`
+
+Delete a file
+
+**Risk:** `destructive`
+
+```ts
+await corsair.dropbox.api.files.delete({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### download
+
+`files.download`
+
+Download a file. A text file comes back as text, any other file as base64, up to about 700 KB; size and type are always returned.
+
+**Risk:** `read`
+
+```ts
+await corsair.dropbox.api.files.download({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `contentBase64` | `string` | No | The file, base64-encoded. Missing when the file came back as text or contentOmitted is set. |
+| `text` | `string` | No | The file as text, in place of contentBase64, when it is a text file (CSV, JSON, Markdown, XML and the like) in UTF-8. |
+| `contentType` | `string` | Yes | Media type of the file, for example application/pdf. |
+| `byteLength` | `number` | Yes | Size of the file in bytes. |
+| `filename` | `string` | No | The file name, when known. |
+| `contentOmitted` | `not_requested \| over_limit` | No | Set when the content was left out: the caller did not ask for it, or the file was over the limit. |
+| `fileId` | `string` | No | Where the host saved the file, in place of its content, when it was over the limit. On Corsair it is a Files id (fil_…): pass it to another app wherever that app takes a file URL, or read a text file or PDF with files.read_text. |
+
+
+
+---
+
+### move
+
+`files.move`
+
+Move a file to a new location
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.files.move({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `from_path` | `string` | Yes | — |
+| `to_path` | `string` | Yes | — |
+| `allow_shared_folder` | `boolean` | No | — |
+| `autorename` | `boolean` | No | — |
+| `allow_ownership_transfer` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### upload
+
+`files.upload`
+
+Upload a file
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.files.upload({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+| `content` | `string` | Yes | — |
+| `mode` | `add \| overwrite \| update` | No | — |
+| `autorename` | `boolean` | No | — |
+| `mute` | `boolean` | No | — |
+| `strict_conflict` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | Yes | — |
+| `name` | `string` | Yes | — |
+| `path_lower` | `string` | No | — |
+| `path_display` | `string` | No | — |
+| `size` | `number` | No | — |
+| `is_downloadable` | `boolean` | No | — |
+| `server_modified` | `string` | No | — |
+| `client_modified` | `string` | No | — |
+| `rev` | `string` | No | — |
+| `content_hash` | `string` | No | — |
+
+
+
+---
+
+## Folders
+
+### copy
+
+`folders.copy`
+
+Copy a folder to a new location
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.folders.copy({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `from_path` | `string` | Yes | — |
+| `to_path` | `string` | Yes | — |
+| `allow_shared_folder` | `boolean` | No | — |
+| `autorename` | `boolean` | No | — |
+| `allow_ownership_transfer` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### create
+
+`folders.create`
+
+Create a new folder
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.folders.create({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+| `autorename` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### delete
+
+`folders.delete`
+
+Delete a folder and all its contents
+
+**Risk:** `destructive`
+
+```ts
+await corsair.dropbox.api.folders.delete({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### list
+
+`folders.list`
+
+List files and folders within a folder
+
+**Risk:** `read`
+
+```ts
+await corsair.dropbox.api.folders.list({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | Yes | — |
+| `recursive` | `boolean` | No | — |
+| `include_deleted` | `boolean` | No | — |
+| `include_mounted_folders` | `boolean` | No | — |
+| `limit` | `number` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `entries` | `object[]` | Yes | — |
+| `cursor` | `string` | Yes | — |
+| `has_more` | `boolean` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="entries full type">
+
+```ts
+(
+  {
+    .tag: file,
+    id: string,
+    name: string,
+    path_lower?: string,
+    path_display?: string,
+    size?: number,
+    is_downloadable?: boolean,
+    server_modified?: string,
+    client_modified?: string,
+    rev?: string,
+    content_hash?: string
+  } | {
+    .tag: folder,
+    id: string,
+    name: string,
+    path_lower?: string,
+    path_display?: string
+  } | {
+    .tag: deleted,
+    name: string,
+    path_lower?: string,
+    path_display?: string
+  }
+)[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### listContinue
+
+`folders.listContinue`
+
+Continue listing from a cursor returned by folders.list
+
+**Risk:** `read`
+
+```ts
+await corsair.dropbox.api.folders.listContinue({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `cursor` | `string` | Yes | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `entries` | `object[]` | Yes | — |
+| `cursor` | `string` | Yes | — |
+| `has_more` | `boolean` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="entries full type">
+
+```ts
+(
+  {
+    .tag: file,
+    id: string,
+    name: string,
+    path_lower?: string,
+    path_display?: string,
+    size?: number,
+    is_downloadable?: boolean,
+    server_modified?: string,
+    client_modified?: string,
+    rev?: string,
+    content_hash?: string
+  } | {
+    .tag: folder,
+    id: string,
+    name: string,
+    path_lower?: string,
+    path_display?: string
+  } | {
+    .tag: deleted,
+    name: string,
+    path_lower?: string,
+    path_display?: string
+  }
+)[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### move
+
+`folders.move`
+
+Move a folder to a new location
+
+**Risk:** `write`
+
+```ts
+await corsair.dropbox.api.folders.move({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `from_path` | `string` | Yes | — |
+| `to_path` | `string` | Yes | — |
+| `allow_shared_folder` | `boolean` | No | — |
+| `autorename` | `boolean` | No | — |
+| `allow_ownership_transfer` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `metadata` | `object` | Yes | — |
+
+<AccordionGroup>
+<Accordion title="metadata full type">
+
+```ts
+{
+  .tag: file,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string,
+  size?: number,
+  is_downloadable?: boolean,
+  server_modified?: string,
+  client_modified?: string,
+  rev?: string,
+  content_hash?: string
+} | {
+  .tag: folder,
+  id: string,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+} | {
+  .tag: deleted,
+  name: string,
+  path_lower?: string,
+  path_display?: string
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+## Search
+
+### query
+
+`search.query`
+
+Search for files and folders by name or content
+
+**Risk:** `read`
+
+```ts
+await corsair.dropbox.api.search.query({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `query` | `string` | Yes | — |
+| `path` | `string` | No | — |
+| `max_results` | `number` | No | — |
+| `filename_only` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `matches` | `object[]` | Yes | — |
+| `has_more` | `boolean` | Yes | — |
+| `cursor` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="matches full type">
+
+```ts
+{
+  metadata?: {
+    metadata: {
+      .tag: file,
+      id: string,
+      name: string,
+      path_lower?: string,
+      path_display?: string,
+      size?: number,
+      is_downloadable?: boolean,
+      server_modified?: string,
+      client_modified?: string,
+      rev?: string,
+      content_hash?: string
+    } | {
+      .tag: folder,
+      id: string,
+      name: string,
+      path_lower?: string,
+      path_display?: string
+    } | {
+      .tag: deleted,
+      name: string,
+      path_lower?: string,
+      path_display?: string
+    }
+  },
+  match_type?: Record<string, any>
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+

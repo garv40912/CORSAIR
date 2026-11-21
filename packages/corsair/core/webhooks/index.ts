@@ -1,0 +1,254 @@
+import type { CorsairContext } from '../endpoints';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhook Request & Response Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Raw incoming webhook data for matching (before full parsing).
+ * Used by matcher functions to determine if a webhook should be handled.
+ */
+export type RawWebhookRequest = {
+	/** HTTP headers from the webhook request */
+	headers: Record<string, string | string[] | undefined>;
+	/** Raw request body (string or already parsed object) */
+	body: unknown;
+	/** Query string parameters when available (e.g. Microsoft Graph validationToken). */
+	query?: Record<string, string | string[] | undefined>;
+};
+
+/**
+ * Raw incoming webhook request data after initial processing.
+ * Contains the parsed payload, headers, and optional raw body string.
+ * @template TPayload - The type of the parsed webhook payload
+ */
+export type WebhookRequest<TPayload = unknown> = {
+	/** Parsed payload from the webhook request body */
+	payload: TPayload;
+	/** HTTP headers from the webhook request */
+	headers: Record<string, string | string[] | undefined>;
+	/** Raw request body string (for signature verification) */
+	rawBody?: string;
+	/** Query string parameters when available. */
+	query?: Record<string, string | string[] | undefined>;
+	/**
+	 * Set by processWebhook when the Hub already verified the provider
+	 * signature (delivery arrived under a valid x-corsair-signature). When
+	 * true, per-plugin webhook signature verification is skipped.
+	 */
+	hubVerified?: boolean;
+};
+
+/**
+ * Response from a webhook handler that can include acknowledgment data.
+ * @template TData - The type of data to return in the response
+ */
+export type WebhookResponse<TData = unknown> = {
+	/** Whether the webhook was processed successfully */
+	success: boolean;
+	/** The entity relevant to the webhook (note that this is corsair_entities.id) */
+	corsairEntityId?: string;
+	/** Return this object to the sender. Defaults to empty. Usually only necessary for webhook confirmation / challenge. */
+	returnToSender?: Record<string, string>;
+	/** Optional data to return in the HTTP response */
+	data?: TData;
+	/** Optional error message if processing failed */
+	error?: string;
+	/**
+	 * HTTP status code to return. Defaults to 200 on success. A handler that
+	 * returns `success: false` without one has refused the delivery (a bad
+	 * signature, a wrong secret): it is not retried. Set a 5xx for a failure on
+	 * your side that the sender should retry; a handler that throws gets 500.
+	 */
+	statusCode?: number;
+	/** HTTP response headers to set on the outgoing response. Used for header-based handshakes (e.g. Asana X-Hook-Secret). */
+	responseHeaders?: Record<string, string>;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhook Handler Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A webhook matcher function that synchronously determines if a raw webhook
+ * request should be handled by this webhook.
+ * @param request - The raw webhook request data
+ * @returns True if this webhook should handle the request
+ */
+export type CorsairWebhookMatcher = (request: RawWebhookRequest) => boolean;
+
+/**
+ * Identifies which external credential key should be used to resolve a tenant
+ * for an incoming webhook. The `linkType` names the field stored on
+ * `corsair_accounts` (for example `team_id`, `installation_id`).
+ */
+export type WebhookTenantMatch = {
+	linkType: string;
+	externalId: string;
+};
+
+/**
+ * Extracts the tenant lookup key from a webhook after the plugin has been
+ * identified. Return null when the payload does not contain a resolvable id
+ * (for example URL verification challenges).
+ */
+export type CorsairWebhookTenantMatcher = (
+	request: RawWebhookRequest,
+) => WebhookTenantMatch | null;
+
+/**
+ * Resolves the webhook tenant link field after OAuth completes.
+ * Return null when the provider does not expose a stable external id.
+ */
+export type CorsairOAuthWebhookTenantLinkResolver = (
+	tokens: import('../auth/exchange').TokenResponse,
+) => WebhookTenantMatch | null | Promise<WebhookTenantMatch | null>;
+
+/**
+ * Bivariance hack for webhook function types to ensure proper type inference.
+ * @template Args - The function arguments
+ * @template R - The function return type
+ */
+type Bivariant<Args extends unknown[], R> = {
+	bivarianceHack(...args: Args): R;
+}['bivarianceHack'];
+
+/**
+ * A webhook handler function definition that processes incoming webhooks.
+ * Takes context + webhook request, returns a webhook response.
+ * @template Ctx - The context type passed to the handler
+ * @template TPayload - The type of the webhook payload
+ * @template TResponseData - The type of data returned in the response
+ */
+export type CorsairWebhookHandler<
+	Ctx extends CorsairContext = CorsairContext,
+	TPayload = unknown,
+	TResponseData = unknown,
+> = Bivariant<
+	[ctx: Ctx, request: WebhookRequest<TPayload>],
+	Promise<WebhookResponse<TResponseData>>
+>;
+
+/**
+ * A complete webhook definition with both matcher and handler.
+ * The matcher synchronously determines if this webhook handles the incoming request.
+ * The handler processes the webhook after matching.
+ * @template Ctx - The context type passed to the handler
+ * @template TPayload - The type of the webhook payload
+ * @template TResponseData - The type of data returned in the response
+ */
+export type CorsairWebhook<
+	Ctx extends CorsairContext = CorsairContext,
+	TPayload = unknown,
+	TResponseData = unknown,
+> = {
+	/** Synchronously determines if this webhook handles the incoming request */
+	match: CorsairWebhookMatcher;
+	/** Handles the webhook request after matching */
+	handler: CorsairWebhookHandler<Ctx, TPayload, TResponseData>;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhook Tree Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A tree of webhooks that can be nested arbitrarily deep.
+ * Similar to EndpointTree but for webhook handlers.
+ *
+ * @example
+ * ```ts
+ * // Flat structure
+ * webhooks: {
+ *   issueCreated: { match: (req) => ..., handler: async (ctx, req) => ... },
+ *   issueClosed: { match: (req) => ..., handler: async (ctx, req) => ... },
+ * }
+ *
+ * // Nested structure
+ * webhooks: {
+ *   issues: {
+ *     created: { match: (req) => ..., handler: async (ctx, req) => ... },
+ *     updated: { match: (req) => ..., handler: async (ctx, req) => ... },
+ *   },
+ *   pull_requests: {
+ *     opened: { match: (req) => ..., handler: async (ctx, req) => ... },
+ *   },
+ * }
+ * ```
+ */
+export type WebhookTree = {
+	[key: string]: CorsairWebhook | WebhookTree;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bound Webhook Types (Context Applied)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A bound webhook - the user-facing API after context is applied.
+ * Contains both the matcher (unchanged) and the bound handler.
+ * @template TPayload - The type of the webhook payload
+ * @template TResponseData - The type of data returned in the response
+ */
+export type BoundWebhook<TPayload = unknown, TResponseData = unknown> = {
+	/** Synchronously determines if this webhook handles the incoming request */
+	match: CorsairWebhookMatcher;
+	/** Handles the webhook request (context already applied) */
+	handler: (
+		request: WebhookRequest<TPayload>,
+	) => Promise<WebhookResponse<TResponseData>>;
+};
+
+/**
+ * A tree of bound webhooks (context already applied).
+ * This is what the end user interacts with after client initialization.
+ */
+export type BoundWebhookTree = {
+	[key: string]: BoundWebhook<any, any> | BoundWebhookTree;
+};
+
+/**
+ * Recursively transforms webhook definitions to their bound (context-free) signatures.
+ * Handles both flat and nested webhook structures.
+ * @template T - The webhook tree to bind
+ */
+export type BindWebhooks<T extends WebhookTree> = {
+	[K in keyof T]: T[K] extends CorsairWebhook<any, infer P, infer R>
+		? BoundWebhook<P, R>
+		: T[K] extends WebhookTree
+			? BindWebhooks<T[K]>
+			: never;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhook Path Types (for Schema Registry)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Derives all dot-notation webhook paths from a WebhookTree as a string literal union.
+ * Used to provide compile-time validation for webhook schema registry keys.
+ * Passing an invalid path to any config that accepts WebhookPathsOf<T> is a type error.
+ *
+ * Design note: Same recursive constraint relaxation as EndpointPathsOf — see that type
+ * for a full explanation of why we use `extends object` rather than `extends WebhookTree`
+ * on the recursive call. We also check `{ match: any; handler: any }` before `object`
+ * because webhook leaves are objects themselves.
+ *
+ * @example
+ * Given: `{ messages: { message: { match: fn, handler: fn } }, channels: { created: { match: fn, handler: fn } } }`
+ * Result: `'messages.message' | 'channels.created'`
+ *
+ * @template T - The webhook tree to extract paths from (unconstrained to allow recursion through as-const types)
+ * @template Prefix - Internal accumulator for the current path prefix (do not supply manually)
+ */
+export type WebhookPathsOf<T, Prefix extends string = ''> = {
+	[K in keyof T & string]: T[K] extends { match: any; handler: any }
+		? // Leaf: it's a webhook — emit the full dot-notation path
+			Prefix extends ''
+			? K
+			: `${Prefix}.${K}`
+		: T[K] extends object
+			? // Non-leaf: it's a nested subtree — recurse with the accumulated prefix
+				WebhookPathsOf<T[K], Prefix extends '' ? K : `${Prefix}.${K}`>
+			: never;
+}[keyof T & string];

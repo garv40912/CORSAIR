@@ -1,0 +1,272 @@
+import { createAccountKeyManager } from '../core';
+import {
+	AccountSelectionError,
+	listAccountSummaries,
+	upsertAccount,
+} from '../core/account-lookup';
+import { getCallableProperty } from '../core/utils/callable';
+import {
+	getCorsairInternal,
+	requireCorsairPlugin,
+} from '../core/utils/corsair-instance';
+import { subscribeAndStoreLink } from '../oauth/subscribe-and-store';
+import { resolveOAuthWebhookTenantLink } from '../webhooks/resolve-oauth-tenant-link';
+import { setWebhookTenantLink } from '../webhooks/tenant-links';
+import { ensureCorsairProvisionedForTenant } from './internal/provision';
+import {
+	registerHubWebhookTenantLink,
+	reportPluginConnectionStatus,
+} from './report-connection-status';
+
+export type ManagedOAuthDeliveryErrorCode =
+	| 'invalid_corsair_instance'
+	| 'no_database'
+	| 'plugin_not_found'
+	| 'no_access_token'
+	| AccountSelectionError['code'];
+
+export class ManagedOAuthDeliveryError extends Error {
+	readonly code: ManagedOAuthDeliveryErrorCode;
+
+	constructor(code: ManagedOAuthDeliveryErrorCode, message: string) {
+		super(message);
+		this.name = 'ManagedOAuthDeliveryError';
+		this.code = code;
+	}
+}
+
+export type ProcessManagedOAuthDeliveryOptions = {
+	plugin: string;
+	tenantId: string;
+	accessToken: string;
+	refreshToken?: string;
+	expiresIn?: number;
+	scope?: string;
+	// The connecting user's own token beside the app's,
+	// stored only when the plugin declares a `user_token` account field.
+	userAccessToken?: string;
+	authType?: 'managed' | 'oauth_2';
+	// Provider token-body identity (Slack team, Notion workspace_id, …) the Hub
+	// forwards so the tenant-link resolver can read it. Absent = API-call class.
+	providerData?: Record<string, unknown>;
+	// Provider account identity; absent = the tenant's default account.
+	account?: { id: string; label?: string };
+	// Every account the hub holds for this plugin and tenant, oldest first, so
+	// an account from before names can be told apart from the one being delivered.
+	accounts?: { id: string; label?: string }[];
+};
+
+export type ProcessManagedOAuthDeliveryResult = {
+	plugin: string;
+	tenantId: string;
+};
+
+// Stores managed OAuth tokens delivered from the hub after a successful connect.
+export async function processManagedOAuthDelivery(
+	corsair: unknown,
+	options: ProcessManagedOAuthDeliveryOptions,
+): Promise<ProcessManagedOAuthDeliveryResult> {
+	const {
+		plugin: pluginId,
+		tenantId,
+		accessToken,
+		refreshToken,
+		expiresIn,
+		scope,
+		userAccessToken,
+		authType = 'managed',
+		providerData,
+	} = options;
+	// Delivery payloads are untyped at runtime; a blank id means no account.
+	const account =
+		typeof options.account?.id === 'string' && options.account.id.trim()
+			? {
+					id: options.account.id,
+					...(typeof options.account.label === 'string' && {
+						label: options.account.label,
+					}),
+				}
+			: undefined;
+	const hubAccounts = Array.isArray(options.accounts)
+		? options.accounts.flatMap((a) =>
+				typeof a?.id === 'string' && a.id.trim()
+					? [
+							{
+								id: a.id,
+								...(typeof a.label === 'string' && { label: a.label }),
+							},
+						]
+					: [],
+			)
+		: undefined;
+
+	if (!accessToken.trim()) {
+		throw new ManagedOAuthDeliveryError(
+			'no_access_token',
+			'Managed OAuth delivery missing access_token',
+		);
+	}
+
+	const internal = getCorsairInternal(
+		corsair,
+		() =>
+			new ManagedOAuthDeliveryError(
+				'invalid_corsair_instance',
+				'Invalid corsair instance',
+			),
+	);
+
+	if (!internal.database) {
+		throw new ManagedOAuthDeliveryError(
+			'no_database',
+			'No database configured on corsair instance',
+		);
+	}
+
+	const plugin = requireCorsairPlugin(
+		internal,
+		pluginId,
+		(message) => new ManagedOAuthDeliveryError('plugin_not_found', message),
+	);
+
+	await ensureCorsairProvisionedForTenant(corsair, tenantId);
+
+	let accountId: string | undefined;
+	if (!account && internal.multiAccount) {
+		// Without a name, the delivery would land on the oldest account.
+		const accounts = await listAccountSummaries({
+			db: internal.database.db,
+			kek: internal.kek,
+			integrationName: pluginId,
+			tenantId,
+		});
+		if (accounts.length > 1) {
+			throw new ManagedOAuthDeliveryError(
+				'account_required',
+				`${pluginId} has ${accounts.length} accounts for tenant "${tenantId}": the delivery must name one`,
+			);
+		}
+	}
+	if (account) {
+		try {
+			({ accountId } = await upsertAccount({
+				database: internal.database,
+				kek: internal.kek,
+				integrationName: pluginId,
+				tenantId,
+				identity: account,
+				allowMany: internal.multiAccount,
+				...(hubAccounts && { hubAccounts }),
+			}));
+		} catch (error) {
+			if (error instanceof AccountSelectionError) {
+				throw new ManagedOAuthDeliveryError(error.code, error.message);
+			}
+			throw error;
+		}
+	}
+
+	const extraAccountFields = plugin.authConfig?.[authType]?.account ?? [];
+	const accountKm = createAccountKeyManager({
+		account: account ? { ref: account.id } : undefined,
+		authType,
+		integrationName: pluginId,
+		tenantId,
+		kek: internal.kek,
+		database: internal.database,
+		extraAccountFields,
+	});
+
+	await accountKm.set_access_token(accessToken);
+	if (refreshToken) {
+		await accountKm.set_refresh_token(refreshToken);
+	}
+	if (expiresIn) {
+		await accountKm.set_expires_at(
+			String(Math.floor(Date.now() / 1000) + expiresIn),
+		);
+	}
+	if (scope) {
+		await accountKm.set_scope(scope);
+	}
+	if (userAccessToken && extraAccountFields.includes('user_token')) {
+		await getCallableProperty(accountKm, 'set_user_token')?.(userAccessToken);
+	}
+
+	// Ack the stored token to Hub so the grid and list_connections flip to
+	// connected. The webhook-link block below only adds inbound routing —
+	// connection status must not depend on it.
+	await reportPluginConnectionStatus(corsair, {
+		plugin,
+		tenantId,
+	}).catch(() => {});
+
+	try {
+		const tenantLink = await resolveOAuthWebhookTenantLink(
+			internal.plugins,
+			pluginId,
+			{
+				access_token: accessToken,
+				refresh_token: refreshToken,
+				scope,
+				...providerData,
+			},
+		);
+		if (tenantLink) {
+			try {
+				await setWebhookTenantLink({
+					database: internal.database,
+					kek: internal.kek,
+					pluginId,
+					tenantId,
+					link: tenantLink,
+					authType,
+					extraAccountFields,
+					accountId,
+					accountRef: account?.id,
+				});
+			} catch (error) {
+				console.warn(
+					`[corsair:managed-oauth] Failed to persist webhook tenant link for '${pluginId}' tenant '${tenantId}':`,
+					error,
+				);
+			}
+
+			// Hub mode: forward the identity so Hub can route inbound webhooks.
+			// Fire-and-forget: never block the OAuth delivery on Hub availability.
+			if (internal.hub) {
+				void registerHubWebhookTenantLink(internal.hub, {
+					plugin: pluginId,
+					tenantId,
+					link: tenantLink,
+					authType,
+				});
+			}
+		}
+	} catch (error) {
+		console.warn(
+			`[corsair:managed-oauth] Failed to resolve webhook tenant link for '${pluginId}' tenant '${tenantId}':`,
+			error,
+		);
+	}
+
+	try {
+		await subscribeAndStoreLink({
+			corsair,
+			internal,
+			plugin,
+			tenantId,
+			keys: accountKm,
+			authType,
+			accountId,
+			accountRef: account?.id,
+		});
+	} catch (error) {
+		console.warn(
+			`[corsair:managed-oauth] subscribe failed for '${pluginId}' tenant '${tenantId}':`,
+			error,
+		);
+	}
+
+	return { plugin: pluginId, tenantId };
+}

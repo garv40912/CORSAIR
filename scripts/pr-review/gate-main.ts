@@ -1,0 +1,186 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+	detectPlugin,
+	PR_FILES_JQ,
+	parsePrFileRows,
+	renderScorecard,
+	runGate,
+	touchedPlugins,
+} from './gate.ts';
+
+const MARKER = '<!-- corsair-pr-gate -->';
+function gh(args: string[]): string {
+	return execFileSync('gh', args, {
+		encoding: 'utf8',
+		maxBuffer: 64 * 1024 * 1024,
+	});
+}
+
+/** Counts *.test.ts files and their expect()/assert() calls on disk. */
+export function countTests(pluginDir: string): {
+	testFileCount: number;
+	assertionCount: number;
+} {
+	if (!fs.existsSync(pluginDir)) {
+		return { testFileCount: 0, assertionCount: 0 };
+	}
+	let testFileCount = 0;
+	let assertionCount = 0;
+	for (const entry of fs.readdirSync(pluginDir, {
+		recursive: true,
+		withFileTypes: true,
+	})) {
+		if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue;
+		if (entry.parentPath.includes('node_modules')) continue;
+		testFileCount += 1;
+		const content = fs.readFileSync(
+			path.join(entry.parentPath, entry.name),
+			'utf8',
+		);
+		assertionCount += content.match(/\b(expect|assert)\s*\(/g)?.length ?? 0;
+	}
+	return { testFileCount, assertionCount };
+}
+
+function upsertComment(repo: string, pr: string, body: string): void {
+	const comments = JSON.parse(
+		gh(['api', `repos/${repo}/issues/${pr}/comments`, '--paginate']),
+	) as { id: number; body: string }[];
+	const existing = comments.find((c) => c.body.startsWith(MARKER));
+	if (existing) {
+		gh([
+			'api',
+			'-X',
+			'PATCH',
+			`repos/${repo}/issues/comments/${existing.id}`,
+			'-f',
+			`body=${body}`,
+		]);
+	} else {
+		gh([
+			'api',
+			'-X',
+			'POST',
+			`repos/${repo}/issues/${pr}/comments`,
+			'-f',
+			`body=${body}`,
+		]);
+	}
+}
+
+function setLabel(repo: string, pr: string, failed: boolean): void {
+	if (failed) {
+		gh([
+			'api',
+			'-X',
+			'POST',
+			`repos/${repo}/issues/${pr}/labels`,
+			'-f',
+			'labels[]=gate:failed',
+		]);
+	} else {
+		try {
+			gh([
+				'api',
+				'-X',
+				'DELETE',
+				`repos/${repo}/issues/${pr}/labels/gate:failed`,
+			]);
+		} catch {
+			// label was not present
+		}
+	}
+}
+
+const event = JSON.parse(
+	fs.readFileSync(process.env.GITHUB_EVENT_PATH ?? '', 'utf8'),
+);
+const repo = process.env.GITHUB_REPOSITORY ?? '';
+const pr = String(event.pull_request.number);
+
+// The PR files API is the source of truth. Diffing against
+// event.pull_request.base.sha is wrong: that sha is recorded on the PR
+// object and lags behind the base branch, sweeping unrelated main-side
+// changes into the diff (seen live on #427 after #435 merged).
+const { changedFiles, addedFiles } = parsePrFileRows(
+	gh([
+		'api',
+		`repos/${repo}/pulls/${pr}/files`,
+		'--paginate',
+		'--jq',
+		PR_FILES_JQ,
+	]),
+);
+
+// Labels are read live, not from the event payload: a label added after the
+// push takes effect when this job is re-run ("Re-run failed jobs").
+const labels = gh([
+	'api',
+	`repos/${repo}/issues/${pr}/labels`,
+	'--paginate',
+	'--jq',
+	'.[].name',
+])
+	.trim()
+	.split('\n')
+	.filter(Boolean);
+
+// The description and draft state are read live too. The event payload keeps
+// the body from when the run was triggered, so a demo attached afterwards
+// still failed R4 on "Re-run failed jobs" (Deepline #2589, Vercel #2550,
+// Litescrape #2627); only a new push or close/reopen picked it up.
+const livePr = JSON.parse(
+	gh(['api', `repos/${repo}/pulls/${pr}`, '--jq', '{body, draft}']),
+) as { body: string | null; draft: boolean };
+
+const plugin = detectPlugin(changedFiles);
+const testFileCounts = Object.fromEntries(
+	touchedPlugins(changedFiles).map((p) => [
+		p,
+		countTests(path.join('packages', p)).testFileCount,
+	]),
+);
+const tests = plugin
+	? countTests(path.join('packages', plugin))
+	: { testFileCount: 0, assertionCount: 0 };
+const result = runGate({
+	changedFiles,
+	prBody: livePr.body ?? '',
+	isDraft: livePr.draft,
+	testFileCount: tests.testFileCount,
+	assertionCount: tests.assertionCount,
+	labels,
+	authorAssociation: event.pull_request.author_association as string,
+	addedFiles,
+	testFileCounts,
+});
+
+if (!result.isPluginPr) {
+	console.log('Not a plugin PR (or draft) — gate skipped.');
+	process.exit(0);
+}
+
+// Fork PRs get a read-only GITHUB_TOKEN regardless of workflow permissions;
+// degrade to log-only there — the loop workflow (base context) posts the
+// scorecard on each review, and this job's exit code enforces the check.
+try {
+	upsertComment(repo, pr, renderScorecard(result));
+	setLabel(repo, pr, result.failures.length > 0);
+} catch (error) {
+	console.log(
+		`::notice::Could not post scorecard (read-only token on fork PRs): ${
+			error instanceof Error ? error.message.split('\n')[0] : error
+		}`,
+	);
+	console.log(renderScorecard(result));
+}
+
+if (result.failures.length > 0) {
+	for (const f of result.failures) {
+		console.error(`[GATE][${f.rule}] ${f.message}`);
+	}
+	process.exit(1);
+}
+console.log('Gate passed.');

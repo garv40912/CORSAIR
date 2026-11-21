@@ -1,0 +1,1572 @@
+---
+title: "Google Drive API reference"
+sidebarTitle: "API"
+description: "API reference for the Google Drive plugin in Corsair: every `googledrive.api.*` operation with its input and output types, taken from the plugin's Zod schemas."
+---
+
+<Info>
+**New to Corsair?** See [API access](/concepts/api), [authentication](/concepts/auth), and [error handling](/concepts/error-handling).
+</Info>
+
+## Files
+
+### copy
+
+`files.copy`
+
+Copy a file in Google Drive
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.copy({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `name` | `string` | No | — |
+| `parents` | `string[]` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### createFromText
+
+`files.createFromText`
+
+Create a new Drive file from text content
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.createFromText({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `name` | `string` | Yes | — |
+| `content` | `string` | Yes | — |
+| `mimeType` | `string` | No | — |
+| `parents` | `string[]` | No | — |
+| `description` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### delete
+
+`files.delete`
+
+Permanently delete a file [DESTRUCTIVE · IRREVERSIBLE]
+
+**Risk:** `destructive` · **Irreversible**
+
+```ts
+await corsair.googledrive.api.files.delete({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+
+
+
+**Output:** `void`
+
+
+---
+
+### download
+
+`files.download`
+
+Download a file with its name, type and size. Up to about 700 KB the content comes back inline: a text file as text, any other file as base64. A larger file comes back with fileId, where the host saved it (on Corsair, a Files id to pass to another app or read with files.read_text), or with contentOmitted when the host keeps no files. Google Docs, Sheets and Slides can't be downloaded; use files.export.
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.files.download({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `acknowledgeAbuse` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `contentBase64` | `string` | No | The file, base64-encoded. Missing when the file came back as text or contentOmitted is set. |
+| `text` | `string` | No | The file as text, in place of contentBase64, when it is a text file (CSV, JSON, Markdown, XML and the like) in UTF-8. |
+| `contentType` | `string` | Yes | Media type of the file, for example application/pdf. |
+| `byteLength` | `number` | Yes | Size of the file in bytes. |
+| `filename` | `string` | No | The file name, when known. |
+| `contentOmitted` | `not_requested \| over_limit` | No | Set when the content was left out: the caller did not ask for it, or the file was over the limit. |
+| `fileId` | `string` | No | Where the host saved the file. Over the limit it comes in place of the content; a host that keeps every file sets it beside the content too. On Corsair it is a Files id (fil_…): pass it to another app wherever that app takes a file URL, or read a text file or PDF with files.read_text. |
+
+
+
+---
+
+### export
+
+`files.export`
+
+Export a Google Docs, Sheets, Slides or Drawings file to a regular format: Markdown for Docs, CSV (first sheet only) for Sheets, PDF for Slides and PNG for Drawings unless mimeType names another, such as docx, xlsx or pptx. Drive exports up to 10 MB. The result comes back like files.download: inline up to about 700 KB, otherwise as fileId where the host saved it, or with contentOmitted.
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.files.export({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | The Google Docs, Sheets, Slides or Drawings file. |
+| `mimeType` | `string` | No | The format to export to, for example application/pdf or application/vnd.openxmlformats-officedocument.wordprocessingml.document. Defaults to Markdown for Docs, CSV (first sheet only) for Sheets, PDF for Slides and PNG for Drawings. |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `contentBase64` | `string` | No | The file, base64-encoded. Missing when the file came back as text or contentOmitted is set. |
+| `text` | `string` | No | The file as text, in place of contentBase64, when it is a text file (CSV, JSON, Markdown, XML and the like) in UTF-8. |
+| `contentType` | `string` | Yes | Media type of the file, for example application/pdf. |
+| `byteLength` | `number` | Yes | Size of the file in bytes. |
+| `filename` | `string` | No | The file name, when known. |
+| `contentOmitted` | `not_requested \| over_limit` | No | Set when the content was left out: the caller did not ask for it, or the file was over the limit. |
+| `fileId` | `string` | No | Where the host saved the file. Over the limit it comes in place of the content; a host that keeps every file sets it beside the content too. On Corsair it is a Files id (fil_…): pass it to another app wherever that app takes a file URL, or read a text file or PDF with files.read_text. |
+
+
+
+---
+
+### exportText
+
+`files.exportText`
+
+Get the plain text of a Google Doc across all of its tabs and store it
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.files.exportText({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | Yes | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `text` | `string` | Yes | — |
+
+
+
+---
+
+### get
+
+`files.get`
+
+Get metadata for a specific file
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.files.get({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `acknowledgeAbuse` | `boolean` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `includePermissionsForView` | `string` | No | — |
+| `fields` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### list
+
+`files.list`
+
+List files in Google Drive
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.files.list({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `q` | `string` | No | — |
+| `pageSize` | `number` | No | — |
+| `pageToken` | `string` | No | — |
+| `spaces` | `string` | No | — |
+| `corpora` | `string` | No | — |
+| `driveId` | `string` | No | — |
+| `includeItemsFromAllDrives` | `boolean` | No | — |
+| `includePermissionsForView` | `string` | No | — |
+| `orderBy` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `teamDriveId` | `string` | No | — |
+| `fields` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `nextPageToken` | `string` | No | — |
+| `incompleteSearch` | `boolean` | No | — |
+| `files` | `object[]` | No | — |
+
+<AccordionGroup>
+<Accordion title="files full type">
+
+```ts
+{
+  id?: string,
+  name?: string,
+  mimeType?: string,
+  description?: string,
+  starred?: boolean,
+  trashed?: boolean,
+  explicitlyTrashed?: boolean,
+  parents?: string[],
+  properties?: Record<string, string>,
+  appProperties?: Record<string, string>,
+  spaces?: string[],
+  version?: string,
+  webViewLink?: string,
+  webContentLink?: string,
+  iconLink?: string,
+  hasThumbnail?: boolean,
+  thumbnailLink?: string,
+  thumbnailVersion?: string,
+  viewedByMe?: boolean,
+  viewedByMeTime?: string,
+  createdTime?: string,
+  modifiedTime?: string,
+  modifiedByMeTime?: string,
+  modifiedByMe?: boolean,
+  shared?: boolean,
+  ownedByMe?: boolean,
+  owners?: {
+    kind?: string,
+    displayName?: string,
+    photoLink?: string,
+    me?: boolean,
+    permissionId?: string,
+    emailAddress?: string
+  }[],
+  permissionIds?: string[],
+  hasAugmentedPermissions?: boolean,
+  folderColorRgb?: string,
+  originalFilename?: string,
+  fullFileExtension?: string,
+  fileExtension?: string,
+  md5Checksum?: string,
+  size?: string,
+  quotaBytesUsed?: string,
+  headRevisionId?: string,
+  isAppAuthorized?: boolean,
+  resourceKey?: string,
+  sha1Checksum?: string,
+  sha256Checksum?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### move
+
+`files.move`
+
+Move a file to a different folder
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.move({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `addParents` | `string` | No | — |
+| `removeParents` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### share
+
+`files.share`
+
+Share a file by granting permissions to users
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.share({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `type` | `user \| group \| domain \| anyone` | No | — |
+| `role` | `owner \| organizer \| fileOrganizer \| writer \| commenter \| reader` | No | — |
+| `emailAddress` | `string` | No | — |
+| `domain` | `string` | No | — |
+| `allowFileDiscovery` | `boolean` | No | — |
+| `expirationTime` | `string` | No | — |
+| `sendNotificationEmail` | `boolean` | No | — |
+| `emailMessage` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `moveToNewOwnersRoot` | `boolean` | No | — |
+| `transferOwnership` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `type` | `user \| group \| domain \| anyone` | No | — |
+| `emailAddress` | `string` | No | — |
+| `domain` | `string` | No | — |
+| `role` | `owner \| organizer \| fileOrganizer \| writer \| commenter \| reader` | No | — |
+| `allowFileDiscovery` | `boolean` | No | — |
+| `displayName` | `string` | No | — |
+| `photoLink` | `string` | No | — |
+| `expirationTime` | `string` | No | — |
+| `deleted` | `boolean` | No | — |
+| `view` | `user \| domain` | No | — |
+| `pendingOwner` | `boolean` | No | — |
+
+
+
+---
+
+### update
+
+`files.update`
+
+Update the content or metadata of a file
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.update({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `fileId` | `string` | Yes | — |
+| `name` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `addParents` | `string` | No | — |
+| `removeParents` | `string` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### upload
+
+`files.upload`
+
+Upload a file to Google Drive
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.files.upload({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `name` | `string` | Yes | — |
+| `mimeType` | `string` | No | — |
+| `parents` | `string[]` | No | — |
+| `description` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+## Folders
+
+### create
+
+`folders.create`
+
+Create a new folder
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.folders.create({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `name` | `string` | Yes | — |
+| `parents` | `string[]` | No | — |
+| `description` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### delete
+
+`folders.delete`
+
+Permanently delete a folder and its contents [DESTRUCTIVE · IRREVERSIBLE]
+
+**Risk:** `destructive` · **Irreversible**
+
+```ts
+await corsair.googledrive.api.folders.delete({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `folderId` | `string` | Yes | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+
+
+
+**Output:** `void`
+
+
+---
+
+### get
+
+`folders.get`
+
+Get metadata for a specific folder
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.folders.get({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `folderId` | `string` | Yes | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `includePermissionsForView` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `mimeType` | `string` | No | — |
+| `description` | `string` | No | — |
+| `starred` | `boolean` | No | — |
+| `trashed` | `boolean` | No | — |
+| `explicitlyTrashed` | `boolean` | No | — |
+| `parents` | `string[]` | No | — |
+| `properties` | `Record<string, string>` | No | — |
+| `appProperties` | `Record<string, string>` | No | — |
+| `spaces` | `string[]` | No | — |
+| `version` | `string` | No | — |
+| `webViewLink` | `string` | No | — |
+| `webContentLink` | `string` | No | — |
+| `iconLink` | `string` | No | — |
+| `hasThumbnail` | `boolean` | No | — |
+| `thumbnailLink` | `string` | No | — |
+| `thumbnailVersion` | `string` | No | — |
+| `viewedByMe` | `boolean` | No | — |
+| `viewedByMeTime` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `modifiedTime` | `string` | No | — |
+| `modifiedByMeTime` | `string` | No | — |
+| `modifiedByMe` | `boolean` | No | — |
+| `shared` | `boolean` | No | — |
+| `ownedByMe` | `boolean` | No | — |
+| `owners` | `object[]` | No | — |
+| `permissionIds` | `string[]` | No | — |
+| `hasAugmentedPermissions` | `boolean` | No | — |
+| `folderColorRgb` | `string` | No | — |
+| `originalFilename` | `string` | No | — |
+| `fullFileExtension` | `string` | No | — |
+| `fileExtension` | `string` | No | — |
+| `md5Checksum` | `string` | No | — |
+| `size` | `string` | No | — |
+| `quotaBytesUsed` | `string` | No | — |
+| `headRevisionId` | `string` | No | — |
+| `isAppAuthorized` | `boolean` | No | — |
+| `resourceKey` | `string` | No | — |
+| `sha1Checksum` | `string` | No | — |
+| `sha256Checksum` | `string` | No | — |
+
+<AccordionGroup>
+<Accordion title="owners full type">
+
+```ts
+{
+  kind?: string,
+  displayName?: string,
+  photoLink?: string,
+  me?: boolean,
+  permissionId?: string,
+  emailAddress?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### list
+
+`folders.list`
+
+List folders in Google Drive
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.folders.list({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `q` | `string` | No | — |
+| `pageSize` | `number` | No | — |
+| `pageToken` | `string` | No | — |
+| `spaces` | `string` | No | — |
+| `corpora` | `string` | No | — |
+| `driveId` | `string` | No | — |
+| `includeItemsFromAllDrives` | `boolean` | No | — |
+| `includePermissionsForView` | `string` | No | — |
+| `orderBy` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `teamDriveId` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `nextPageToken` | `string` | No | — |
+| `incompleteSearch` | `boolean` | No | — |
+| `files` | `object[]` | No | — |
+
+<AccordionGroup>
+<Accordion title="files full type">
+
+```ts
+{
+  id?: string,
+  name?: string,
+  mimeType?: string,
+  description?: string,
+  starred?: boolean,
+  trashed?: boolean,
+  explicitlyTrashed?: boolean,
+  parents?: string[],
+  properties?: Record<string, string>,
+  appProperties?: Record<string, string>,
+  spaces?: string[],
+  version?: string,
+  webViewLink?: string,
+  webContentLink?: string,
+  iconLink?: string,
+  hasThumbnail?: boolean,
+  thumbnailLink?: string,
+  thumbnailVersion?: string,
+  viewedByMe?: boolean,
+  viewedByMeTime?: string,
+  createdTime?: string,
+  modifiedTime?: string,
+  modifiedByMeTime?: string,
+  modifiedByMe?: boolean,
+  shared?: boolean,
+  ownedByMe?: boolean,
+  owners?: {
+    kind?: string,
+    displayName?: string,
+    photoLink?: string,
+    me?: boolean,
+    permissionId?: string,
+    emailAddress?: string
+  }[],
+  permissionIds?: string[],
+  hasAugmentedPermissions?: boolean,
+  folderColorRgb?: string,
+  originalFilename?: string,
+  fullFileExtension?: string,
+  fileExtension?: string,
+  md5Checksum?: string,
+  size?: string,
+  quotaBytesUsed?: string,
+  headRevisionId?: string,
+  isAppAuthorized?: boolean,
+  resourceKey?: string,
+  sha1Checksum?: string,
+  sha256Checksum?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### share
+
+`folders.share`
+
+Share a folder by granting permissions to users
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.folders.share({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `folderId` | `string` | Yes | — |
+| `type` | `user \| group \| domain \| anyone` | No | — |
+| `role` | `owner \| organizer \| fileOrganizer \| writer \| commenter \| reader` | No | — |
+| `emailAddress` | `string` | No | — |
+| `domain` | `string` | No | — |
+| `allowFileDiscovery` | `boolean` | No | — |
+| `expirationTime` | `string` | No | — |
+| `sendNotificationEmail` | `boolean` | No | — |
+| `emailMessage` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `moveToNewOwnersRoot` | `boolean` | No | — |
+| `transferOwnership` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | `string` | No | — |
+| `type` | `user \| group \| domain \| anyone` | No | — |
+| `emailAddress` | `string` | No | — |
+| `domain` | `string` | No | — |
+| `role` | `owner \| organizer \| fileOrganizer \| writer \| commenter \| reader` | No | — |
+| `allowFileDiscovery` | `boolean` | No | — |
+| `displayName` | `string` | No | — |
+| `photoLink` | `string` | No | — |
+| `expirationTime` | `string` | No | — |
+| `deleted` | `boolean` | No | — |
+| `view` | `user \| domain` | No | — |
+| `pendingOwner` | `boolean` | No | — |
+
+
+
+---
+
+## Search
+
+### filesAndFolders
+
+`search.filesAndFolders`
+
+Search for files and folders in Google Drive
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.search.filesAndFolders({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `q` | `string` | Yes | — |
+| `pageSize` | `number` | No | — |
+| `pageToken` | `string` | No | — |
+| `spaces` | `string` | No | — |
+| `corpora` | `string` | No | — |
+| `driveId` | `string` | No | — |
+| `includeItemsFromAllDrives` | `boolean` | No | — |
+| `includePermissionsForView` | `string` | No | — |
+| `orderBy` | `string` | No | — |
+| `supportsAllDrives` | `boolean` | No | — |
+| `supportsTeamDrives` | `boolean` | No | — |
+| `teamDriveId` | `string` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `nextPageToken` | `string` | No | — |
+| `incompleteSearch` | `boolean` | No | — |
+| `files` | `object[]` | No | — |
+
+<AccordionGroup>
+<Accordion title="files full type">
+
+```ts
+{
+  id?: string,
+  name?: string,
+  mimeType?: string,
+  description?: string,
+  starred?: boolean,
+  trashed?: boolean,
+  explicitlyTrashed?: boolean,
+  parents?: string[],
+  properties?: Record<string, string>,
+  appProperties?: Record<string, string>,
+  spaces?: string[],
+  version?: string,
+  webViewLink?: string,
+  webContentLink?: string,
+  iconLink?: string,
+  hasThumbnail?: boolean,
+  thumbnailLink?: string,
+  thumbnailVersion?: string,
+  viewedByMe?: boolean,
+  viewedByMeTime?: string,
+  createdTime?: string,
+  modifiedTime?: string,
+  modifiedByMeTime?: string,
+  modifiedByMe?: boolean,
+  shared?: boolean,
+  ownedByMe?: boolean,
+  owners?: {
+    kind?: string,
+    displayName?: string,
+    photoLink?: string,
+    me?: boolean,
+    permissionId?: string,
+    emailAddress?: string
+  }[],
+  permissionIds?: string[],
+  hasAugmentedPermissions?: boolean,
+  folderColorRgb?: string,
+  originalFilename?: string,
+  fullFileExtension?: string,
+  fileExtension?: string,
+  md5Checksum?: string,
+  size?: string,
+  quotaBytesUsed?: string,
+  headRevisionId?: string,
+  isAppAuthorized?: boolean,
+  resourceKey?: string,
+  sha1Checksum?: string,
+  sha256Checksum?: string
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+## Shared Drives
+
+### create
+
+`sharedDrives.create`
+
+Create a new shared drive
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.sharedDrives.create({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `name` | `string` | Yes | — |
+| `requestId` | `string` | No | — |
+| `themeId` | `string` | No | — |
+| `colorRgb` | `string` | No | — |
+| `restrictions` | `object` | No | — |
+
+<AccordionGroup>
+<Accordion title="restrictions full type">
+
+```ts
+{
+  adminManagedRestrictions?: boolean,
+  copyRequiresWriterPermission?: boolean,
+  domainUsersOnly?: boolean,
+  driveMembersOnly?: boolean
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `themeId` | `string` | No | — |
+| `colorRgb` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `hidden` | `boolean` | No | — |
+
+
+
+---
+
+### delete
+
+`sharedDrives.delete`
+
+Permanently delete a shared drive [DESTRUCTIVE · IRREVERSIBLE]
+
+**Risk:** `destructive` · **Irreversible**
+
+```ts
+await corsair.googledrive.api.sharedDrives.delete({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `driveId` | `string` | Yes | — |
+
+
+
+**Output:** `void`
+
+
+---
+
+### get
+
+`sharedDrives.get`
+
+Get info about a shared drive
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.sharedDrives.get({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `driveId` | `string` | Yes | — |
+| `useDomainAdminAccess` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `themeId` | `string` | No | — |
+| `colorRgb` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `hidden` | `boolean` | No | — |
+
+
+
+---
+
+### list
+
+`sharedDrives.list`
+
+List shared drives
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.sharedDrives.list({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `pageSize` | `number` | No | — |
+| `pageToken` | `string` | No | — |
+| `q` | `string` | No | — |
+| `useDomainAdminAccess` | `boolean` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `nextPageToken` | `string` | No | — |
+| `drives` | `object[]` | No | — |
+
+<AccordionGroup>
+<Accordion title="drives full type">
+
+```ts
+{
+  kind?: string,
+  id?: string,
+  name?: string,
+  themeId?: string,
+  colorRgb?: string,
+  createdTime?: string,
+  hidden?: boolean
+}[]
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### update
+
+`sharedDrives.update`
+
+Update a shared drive
+
+**Risk:** `write`
+
+```ts
+await corsair.googledrive.api.sharedDrives.update({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `driveId` | `string` | Yes | — |
+| `name` | `string` | No | — |
+| `themeId` | `string` | No | — |
+| `colorRgb` | `string` | No | — |
+| `restrictions` | `object` | No | — |
+| `useDomainAdminAccess` | `boolean` | No | — |
+
+<AccordionGroup>
+<Accordion title="restrictions full type">
+
+```ts
+{
+  adminManagedRestrictions?: boolean,
+  copyRequiresWriterPermission?: boolean,
+  domainUsersOnly?: boolean,
+  driveMembersOnly?: boolean
+}
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `kind` | `string` | No | — |
+| `id` | `string` | No | — |
+| `name` | `string` | No | — |
+| `themeId` | `string` | No | — |
+| `colorRgb` | `string` | No | — |
+| `createdTime` | `string` | No | — |
+| `hidden` | `boolean` | No | — |
+
+
+
+---
+
+## Storage
+
+### getQuota
+
+`storage.getQuota`
+
+Get the user's Google Drive storage quota and usage
+
+**Risk:** `read`
+
+```ts
+await corsair.googledrive.api.storage.getQuota({});
+```
+
+**Input:** _empty object_
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `limit` | `string` | No | — |
+| `usage` | `string` | Yes | — |
+| `usageInDrive` | `string` | Yes | — |
+| `usageInDriveTrash` | `string` | Yes | — |
+
+
+
+---
+

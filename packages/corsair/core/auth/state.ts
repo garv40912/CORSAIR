@@ -1,0 +1,106 @@
+import * as crypto from 'node:crypto';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OAuth State Encoding — HMAC-signed to prevent forged callbacks
+// Extracted here so both oauth/index.ts and core/endpoints/bind.ts can import
+// without creating circular dependencies.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Add account, or reconnect one by its id, ref or label. */
+export type OAuthAccountTarget = { add: true } | { reconnect: string };
+
+export type OAuthState = {
+	plugin: string;
+	tenantId: string;
+	iat: number;
+	account?: OAuthAccountTarget;
+};
+
+export function encodeOAuthState(
+	plugin: string,
+	tenantId: string,
+	account?: OAuthAccountTarget,
+): string {
+	return Buffer.from(
+		JSON.stringify({
+			plugin,
+			tenantId,
+			iat: Date.now(),
+			...(account && { account }),
+		}),
+	).toString('base64url');
+}
+
+export function decodeOAuthState(
+	state: string,
+	{ maxAgeMs }: { maxAgeMs?: number } = {},
+): OAuthState | null {
+	try {
+		const payload = state.includes('.') ? state.split('.')[0] : state;
+		const decoded = JSON.parse(
+			Buffer.from(payload!, 'base64url').toString('utf-8'),
+		) as unknown;
+		if (
+			decoded !== null &&
+			typeof decoded === 'object' &&
+			'plugin' in decoded &&
+			'tenantId' in decoded &&
+			typeof (decoded as OAuthState).plugin === 'string' &&
+			typeof (decoded as OAuthState).tenantId === 'string'
+		) {
+			const result = decoded as OAuthState;
+			if (
+				maxAgeMs !== undefined &&
+				typeof result.iat === 'number' &&
+				Date.now() - result.iat > maxAgeMs
+			) {
+				return null;
+			}
+			return result;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+export function signState(payload: string, kek: string): string {
+	if (!kek) {
+		throw new Error(
+			'OAuth state signing requires a configured kek. Pass kek to createCorsair().',
+		);
+	}
+	const sig = crypto
+		.createHmac('sha256', kek)
+		.update(payload)
+		.digest('base64url');
+	return `${payload}.${sig}`;
+}
+
+export const DEFAULT_CONNECT_LINK_TTL_MS = 10 * 60 * 1000;
+
+export function verifyAndDecodeState(
+	signed: string,
+	kek: string,
+): OAuthState | null {
+	// An empty kek must never verify — otherwise a state signed with '' would be
+	// accepted as valid. Reject rather than compute an HMAC over an empty key.
+	if (!kek) return null;
+	const dotIdx = signed.lastIndexOf('.');
+	if (dotIdx === -1) return null;
+	const payload = signed.slice(0, dotIdx);
+	const sig = signed.slice(dotIdx + 1);
+	const expected = crypto
+		.createHmac('sha256', kek)
+		.update(payload)
+		.digest('base64url');
+	const sigBuf = Buffer.from(sig, 'base64url');
+	const expectedBuf = Buffer.from(expected, 'base64url');
+	if (
+		sigBuf.length !== expectedBuf.length ||
+		!crypto.timingSafeEqual(sigBuf, expectedBuf)
+	) {
+		return null;
+	}
+	return decodeOAuthState(payload, { maxAgeMs: DEFAULT_CONNECT_LINK_TTL_MS });
+}

@@ -1,0 +1,84 @@
+import type { ApiRequestOptions, OpenAPIConfig } from 'corsair/http';
+import { request } from 'corsair/http';
+
+export class GmailAPIError extends Error {
+	constructor(
+		message: string,
+		public readonly code?: number,
+	) {
+		super(message);
+		this.name = 'GmailAPIError';
+	}
+}
+
+export const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1';
+
+type GmailRequestOptions = {
+	method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+	body?: Record<string, unknown>;
+	// Arrays are sent as repeated parameters (metadataHeaders=a&metadataHeaders=b),
+	// which is how Gmail reads its list-valued query parameters.
+	query?: Record<string, string | number | boolean | string[] | undefined>;
+};
+
+export async function makeGmailRequest<T>(
+	endpoint: string,
+	credentials: string,
+	options: GmailRequestOptions = {},
+): Promise<T> {
+	const { method = 'GET', body, query } = options;
+
+	const config: OpenAPIConfig = {
+		BASE: GMAIL_API_BASE,
+		VERSION: '1.0.0',
+		WITH_CREDENTIALS: false,
+		CREDENTIALS: 'omit',
+		TOKEN: credentials,
+		HEADERS: {
+			'Content-Type': 'application/json',
+		},
+	};
+
+	const requestOptions: ApiRequestOptions = {
+		method,
+		url: endpoint,
+		body:
+			method === 'POST' || method === 'PUT' || method === 'PATCH'
+				? body
+				: undefined,
+		mediaType: 'application/json',
+		query: method === 'GET' ? query : undefined,
+	};
+
+	const response = await request<T>(config, requestOptions);
+	return response;
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		'status' in error &&
+		(error as { status: number }).status === 401
+	);
+}
+
+/**
+ * Wrapper around makeGmailRequest that retries once on 401 by force-refreshing
+ * the access token. Handles the case where a stored token is rejected by Google
+ * (e.g. revoked, corrupted) even though `expires_at` hasn't passed yet.
+ */
+export async function makeAuthenticatedGmailRequest<T>(
+	endpoint: string,
+	ctx: { key: string; _refreshAuth?: () => Promise<string> },
+	options: GmailRequestOptions = {},
+): Promise<T> {
+	try {
+		return await makeGmailRequest<T>(endpoint, ctx.key, options);
+	} catch (error) {
+		if (isUnauthorizedError(error) && ctx._refreshAuth) {
+			const freshToken = await ctx._refreshAuth();
+			return await makeGmailRequest<T>(endpoint, freshToken, options);
+		}
+		throw error;
+	}
+}

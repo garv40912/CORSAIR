@@ -1,0 +1,1285 @@
+import { z } from 'zod';
+
+const IssuesListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	milestone: z.string().optional(),
+	state: z.enum(['open', 'closed', 'all']).optional(),
+	assignee: z.string().optional(),
+	creator: z.string().optional(),
+	mentioned: z.string().optional(),
+	labels: z.string().optional(),
+	sort: z.enum(['created', 'updated', 'comments']).optional(),
+	direction: z.enum(['asc', 'desc']).optional(),
+	since: z.string().optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const IssuesGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	issueNumber: z.number(),
+});
+
+const IssuesCreateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	title: z.union([z.string(), z.number()]),
+	body: z.string().optional(),
+	assignee: z.string().nullable().optional(),
+	milestone: z.union([z.string(), z.number()]).nullable().optional(),
+	labels: z
+		.array(
+			z.union([
+				z.string(),
+				z.object({
+					id: z.number().optional(),
+					name: z.string().optional(),
+					description: z.string().nullable().optional(),
+					color: z.string().nullable().optional(),
+				}),
+			]),
+		)
+		.optional(),
+	assignees: z.array(z.string()).optional(),
+});
+
+const IssuesUpdateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	issueNumber: z.number(),
+	title: z.union([z.string(), z.number()]).nullable().optional(),
+	body: z.string().nullable().optional(),
+	assignee: z.string().nullable().optional(),
+	state: z.enum(['open', 'closed']).optional(),
+	stateReason: z
+		.enum(['completed', 'not_planned', 'duplicate', 'reopened'])
+		.nullable()
+		.optional(),
+	milestone: z.union([z.string(), z.number()]).nullable().optional(),
+	labels: z
+		.array(
+			z.union([
+				z.string(),
+				z.object({
+					id: z.number().optional(),
+					name: z.string().optional(),
+					description: z.string().nullable().optional(),
+					color: z.string().nullable().optional(),
+				}),
+			]),
+		)
+		.optional(),
+	assignees: z.array(z.string()).optional(),
+});
+
+const IssuesCreateCommentInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	issueNumber: z.number(),
+	body: z.string(),
+});
+
+const PullRequestsListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	state: z.enum(['open', 'closed', 'all']).optional(),
+	head: z.string().optional(),
+	base: z.string().optional(),
+	sort: z.enum(['created', 'updated', 'popularity', 'long-running']).optional(),
+	direction: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const PullRequestsGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	pullNumber: z.number(),
+});
+
+const PullRequestsListReviewsInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	pullNumber: z.number(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const PullRequestsCreateReviewInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	pullNumber: z.number(),
+	commitId: z.string().optional(),
+	body: z.string().optional(),
+	event: z.enum(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']).optional(),
+	comments: z
+		.array(
+			z.object({
+				path: z.string(),
+				position: z.number().optional(),
+				body: z.string(),
+				line: z.number().optional(),
+				side: z.string().optional(),
+				startLine: z.number().optional(),
+				startSide: z.string().optional(),
+			}),
+		)
+		.optional(),
+});
+
+const RepositoriesListInputSchema = z.object({
+	owner: z.string().optional(),
+	type: z.enum(['all', 'owner', 'public', 'private', 'member']).optional(),
+	sort: z.enum(['created', 'updated', 'pushed', 'full_name']).optional(),
+	direction: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const RepositoriesGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+});
+
+const RepositoriesListBranchesInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	protected: z.boolean().optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const RepositoriesListCommitsInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	sha: z.string().optional(),
+	path: z.string().optional(),
+	author: z.string().optional(),
+	committer: z.string().optional(),
+	since: z.string().optional(),
+	until: z.string().optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsPaginationInputSchema = z.object({
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListInputSchema = EventsPaginationInputSchema;
+
+const EventsListForNetworkInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListForOrgInputSchema = z.object({
+	org: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListForRepositoryInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListForUserInputSchema = z.object({
+	username: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListForUserOrgInputSchema = z.object({
+	username: z.string(),
+	org: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListPublicForUserInputSchema = z.object({
+	username: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListReceivedForUserInputSchema = z.object({
+	username: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const EventsListPublicReceivedForUserInputSchema = z.object({
+	username: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const RepositoriesGetContentInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	path: z.string(),
+	ref: z.string().optional(),
+});
+
+/** PUT /user/starred/{owner}/{repo} — see GitHub REST "Star a repository for the authenticated user" */
+const RepositoriesStarInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+});
+
+const RepositoriesUnstarInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+});
+
+const RepositoriesCheckStarredInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+});
+
+const RepositoriesListStarredInputSchema = z.object({
+	sort: z.enum(['created', 'updated']).optional(),
+	direction: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const RepositoriesListStargazersInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const ReleasesListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const ReleasesGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	releaseId: z.number(),
+});
+
+const ReleasesCreateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	tagName: z.string(),
+	targetCommitish: z.string().optional(),
+	name: z.string().optional(),
+	body: z.string().optional(),
+	draft: z.boolean().optional(),
+	prerelease: z.boolean().optional(),
+	generateReleaseNotes: z.boolean().optional(),
+});
+
+const ReleasesUpdateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	releaseId: z.number(),
+	tagName: z.string().optional(),
+	targetCommitish: z.string().optional(),
+	name: z.string().optional(),
+	body: z.string().optional(),
+	draft: z.boolean().optional(),
+	prerelease: z.boolean().optional(),
+});
+
+const WorkflowsListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const WorkflowsGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	workflowId: z.union([z.number(), z.string()]),
+});
+
+const WorkflowsListRunsInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	actor: z.string().optional(),
+	branch: z.string().optional(),
+	event: z.string().optional(),
+	status: z
+		.enum([
+			'completed',
+			'action_required',
+			'cancelled',
+			'failure',
+			'neutral',
+			'skipped',
+			'stale',
+			'success',
+			'timed_out',
+			'in_progress',
+			'queued',
+			'requested',
+			'waiting',
+			'pending',
+		])
+		.optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+	created: z.string().optional(),
+	excludePullRequests: z.boolean().optional(),
+	checkSuiteId: z.number().optional(),
+	headSha: z.string().optional(),
+});
+
+const CommentsListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	sort: z.enum(['created', 'updated']).optional(),
+	direction: z.enum(['asc', 'desc']).optional(),
+	since: z.string().optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const CommentsListForIssueInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	issueNumber: z.number(),
+	since: z.string().optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const CommentsGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	commentId: z.number(),
+});
+
+const CommentsUpdateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	commentId: z.number(),
+	body: z.string(),
+});
+
+const CommentsDeleteInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	commentId: z.number(),
+});
+
+const DiscussionsListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const DiscussionsGetInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	discussionNumber: z.number(),
+});
+
+const ForksListInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	sort: z.enum(['newest', 'oldest', 'stargazers', 'watchers']).optional(),
+	perPage: z.number().optional(),
+	page: z.number().optional(),
+});
+
+const ForksCreateInputSchema = z.object({
+	owner: z.string(),
+	repo: z.string(),
+	organization: z.string().optional(),
+	name: z.string().optional(),
+	defaultBranchOnly: z.boolean().optional(),
+});
+
+const UsersListInputSchema = z.object({
+	since: z.number().optional(),
+	perPage: z.number().optional(),
+});
+
+const UsersGetInputSchema = z.object({
+	username: z.string(),
+});
+
+const UsersGetByIdInputSchema = z.object({
+	accountId: z.number(),
+});
+
+const UsersGetAuthenticatedInputSchema = z.object({});
+
+const UsersUpdateInputSchema = z.object({
+	name: z.string().optional(),
+	email: z.string().optional(),
+	blog: z.string().optional(),
+	twitterUsername: z.string().nullable().optional(),
+	company: z.string().optional(),
+	location: z.string().optional(),
+	hireable: z.boolean().optional(),
+	bio: z.string().optional(),
+});
+
+const UsersGetHovercardInputSchema = z.object({
+	username: z.string(),
+	subjectType: z
+		.enum(['organization', 'repository', 'issue', 'pull_request'])
+		.optional(),
+	subjectId: z.string().optional(),
+});
+
+const SearchIssuesInputSchema = z.object({
+	q: z.string(),
+	sort: z
+		.enum([
+			'comments',
+			'reactions',
+			'reactions-+1',
+			'reactions--1',
+			'reactions-smile',
+			'reactions-thinking_face',
+			'reactions-heart',
+			'reactions-tada',
+			'interactions',
+			'created',
+			'updated',
+		])
+		.optional(),
+	order: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().int().min(1).max(100).optional(),
+	page: z.number().int().min(1).optional(),
+	advancedSearch: z.boolean().optional(),
+	searchType: z.enum(['semantic', 'hybrid']).optional(),
+});
+
+const SearchRepositoriesInputSchema = z.object({
+	q: z.string(),
+	sort: z.enum(['stars', 'forks', 'help-wanted-issues', 'updated']).optional(),
+	order: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().int().min(1).max(100).optional(),
+	page: z.number().int().min(1).optional(),
+});
+
+const SearchUsersInputSchema = z.object({
+	q: z.string(),
+	sort: z.enum(['followers', 'repositories', 'joined']).optional(),
+	order: z.enum(['asc', 'desc']).optional(),
+	perPage: z.number().int().min(1).max(100).optional(),
+	page: z.number().int().min(1).optional(),
+});
+
+export const GithubEndpointInputSchemas = {
+	issuesList: IssuesListInputSchema,
+	issuesGet: IssuesGetInputSchema,
+	issuesCreate: IssuesCreateInputSchema,
+	issuesUpdate: IssuesUpdateInputSchema,
+	issuesCreateComment: IssuesCreateCommentInputSchema,
+	pullRequestsList: PullRequestsListInputSchema,
+	pullRequestsGet: PullRequestsGetInputSchema,
+	pullRequestsListReviews: PullRequestsListReviewsInputSchema,
+	pullRequestsCreateReview: PullRequestsCreateReviewInputSchema,
+	repositoriesList: RepositoriesListInputSchema,
+	repositoriesGet: RepositoriesGetInputSchema,
+	repositoriesListBranches: RepositoriesListBranchesInputSchema,
+	repositoriesListCommits: RepositoriesListCommitsInputSchema,
+	repositoriesGetContent: RepositoriesGetContentInputSchema,
+	eventsList: EventsListInputSchema,
+	eventsListForNetwork: EventsListForNetworkInputSchema,
+	eventsListForOrg: EventsListForOrgInputSchema,
+	eventsListForRepository: EventsListForRepositoryInputSchema,
+	eventsListForUser: EventsListForUserInputSchema,
+	eventsListForUserOrg: EventsListForUserOrgInputSchema,
+	eventsListPublicForUser: EventsListPublicForUserInputSchema,
+	eventsListReceivedForUser: EventsListReceivedForUserInputSchema,
+	eventsListPublicReceivedForUser: EventsListPublicReceivedForUserInputSchema,
+	repositoriesStar: RepositoriesStarInputSchema,
+	repositoriesUnstar: RepositoriesUnstarInputSchema,
+	repositoriesCheckStarred: RepositoriesCheckStarredInputSchema,
+	repositoriesListStarred: RepositoriesListStarredInputSchema,
+	repositoriesListStargazers: RepositoriesListStargazersInputSchema,
+	releasesList: ReleasesListInputSchema,
+	releasesGet: ReleasesGetInputSchema,
+	releasesCreate: ReleasesCreateInputSchema,
+	releasesUpdate: ReleasesUpdateInputSchema,
+	workflowsList: WorkflowsListInputSchema,
+	workflowsGet: WorkflowsGetInputSchema,
+	workflowsListRuns: WorkflowsListRunsInputSchema,
+	discussionsList: DiscussionsListInputSchema,
+	discussionsGet: DiscussionsGetInputSchema,
+	forksList: ForksListInputSchema,
+	forksCreate: ForksCreateInputSchema,
+	commentsList: CommentsListInputSchema,
+	commentsListForIssue: CommentsListForIssueInputSchema,
+	commentsGet: CommentsGetInputSchema,
+	commentsUpdate: CommentsUpdateInputSchema,
+	commentsDelete: CommentsDeleteInputSchema,
+	usersList: UsersListInputSchema,
+	usersGet: UsersGetInputSchema,
+	usersGetById: UsersGetByIdInputSchema,
+	usersGetAuthenticated: UsersGetAuthenticatedInputSchema,
+	usersUpdate: UsersUpdateInputSchema,
+	usersGetHovercard: UsersGetHovercardInputSchema,
+	searchIssues: SearchIssuesInputSchema,
+	searchRepositories: SearchRepositoriesInputSchema,
+	searchUsers: SearchUsersInputSchema,
+} as const;
+
+export type GithubEndpointInputs = {
+	[K in keyof typeof GithubEndpointInputSchemas]: z.infer<
+		(typeof GithubEndpointInputSchemas)[K]
+	>;
+};
+
+const SimpleUserSchema = z.object({
+	name: z.string().nullable().optional(),
+	email: z.string().nullable().optional(),
+	login: z.string(),
+	id: z.number(),
+	nodeId: z.string().optional(),
+	avatarUrl: z.string().optional(),
+	gravatarId: z.string().nullable().optional(),
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	followersUrl: z.string().optional(),
+	followingUrl: z.string().optional(),
+	gistsUrl: z.string().optional(),
+	starredUrl: z.string().optional(),
+	subscriptionsUrl: z.string().optional(),
+	organizationsUrl: z.string().optional(),
+	reposUrl: z.string().optional(),
+	eventsUrl: z.string().optional(),
+	receivedEventsUrl: z.string().optional(),
+	type: z.string().optional(),
+	siteAdmin: z.boolean().optional(),
+	starredAt: z.coerce.date().nullable().optional(),
+	userViewType: z.string().optional(),
+});
+
+const UserPlanSchema = z.object({
+	collaborators: z.number().optional(),
+	name: z.string().optional(),
+	space: z.number().optional(),
+	privateRepos: z.number().optional(),
+});
+
+const UserSchema = SimpleUserSchema.extend({
+	company: z.string().nullable().optional(),
+	blog: z.string().nullable().optional(),
+	location: z.string().nullable().optional(),
+	notificationEmail: z.string().nullable().optional(),
+	hireable: z.boolean().nullable().optional(),
+	bio: z.string().nullable().optional(),
+	twitterUsername: z.string().nullable().optional(),
+	publicRepos: z.number().optional(),
+	publicGists: z.number().optional(),
+	followers: z.number().optional(),
+	following: z.number().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	privateGists: z.number().optional(),
+	totalPrivateRepos: z.number().optional(),
+	ownedPrivateRepos: z.number().optional(),
+	diskUsage: z.number().optional(),
+	collaborators: z.number().optional(),
+	twoFactorAuthentication: z.boolean().optional(),
+	plan: UserPlanSchema.optional(),
+	businessPlus: z.boolean().optional(),
+	ldapDn: z.string().optional(),
+});
+
+const LabelSchema = z.object({
+	id: z.number().optional(),
+	nodeId: z.string().optional(),
+	url: z.string().optional(),
+	name: z.string().optional(),
+	description: z.string().nullable().optional(),
+	color: z.string().nullable().optional(),
+	default: z.boolean().optional(),
+});
+
+const MilestoneSchema = z.object({
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	labelsUrl: z.string().optional(),
+	id: z.number().optional(),
+	nodeId: z.string().optional(),
+	number: z.number().optional(),
+	state: z.enum(['open', 'closed']).optional(),
+	title: z.string().optional(),
+	description: z.string().nullable().optional(),
+	creator: SimpleUserSchema.optional(),
+	openIssues: z.number().optional(),
+	closedIssues: z.number().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	closedAt: z.coerce.date().nullable().optional(),
+	dueOn: z.coerce.date().nullable().optional(),
+});
+
+const EventSchema = z.object({
+	id: z.string(),
+	type: z.string(),
+	actor: SimpleUserSchema.optional(),
+	repo: z
+		.object({
+			id: z.number(),
+			name: z.string(),
+			url: z.string().optional(),
+		})
+		.optional(),
+	org: SimpleUserSchema.optional(),
+	payload: z.record(z.string(), z.unknown()).optional(),
+	public: z.boolean().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+});
+
+const RepositorySchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	name: z.string(),
+	fullName: z.string().optional(),
+	private: z.boolean().optional(),
+	htmlUrl: z.string().optional(),
+	description: z.string().nullable().optional(),
+	fork: z.boolean().optional(),
+	url: z.string().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	pushedAt: z.coerce.date().nullable().optional(),
+	defaultBranch: z.string().optional(),
+	language: z.string().nullable().optional(),
+	stargazersCount: z.number().optional(),
+	watchersCount: z.number().optional(),
+	forksCount: z.number().optional(),
+	openIssuesCount: z.number().optional(),
+	archived: z.boolean().optional(),
+	disabled: z.boolean().optional(),
+	owner: SimpleUserSchema.optional(),
+});
+
+const IssueSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	url: z.string().optional(),
+	repositoryUrl: z.string().optional(),
+	labelsUrl: z.string().optional(),
+	commentsUrl: z.string().optional(),
+	eventsUrl: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	number: z.number(),
+	state: z.string(),
+	stateReason: z
+		.enum(['completed', 'reopened', 'not_planned', 'duplicate'])
+		.nullable()
+		.optional(),
+	title: z.string(),
+	body: z.string().nullable().optional(),
+	user: SimpleUserSchema.nullable().optional(),
+	labels: z.array(z.union([z.string(), LabelSchema])).optional(),
+	assignee: SimpleUserSchema.nullable().optional(),
+	assignees: z.array(SimpleUserSchema).nullable().optional(),
+	locked: z.boolean().optional(),
+	comments: z.number().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	closedAt: z.coerce.date().nullable().optional(),
+});
+
+const PullRequestSchema = z.object({
+	url: z.string(),
+	id: z.number(),
+	nodeId: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	diffUrl: z.string().optional(),
+	patchUrl: z.string().optional(),
+	issueUrl: z.string().optional(),
+	number: z.number(),
+	state: z.enum(['open', 'closed']),
+	locked: z.boolean().optional(),
+	title: z.string(),
+	user: SimpleUserSchema.optional(),
+	body: z.string().nullable().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	closedAt: z.coerce.date().nullable().optional(),
+	mergedAt: z.coerce.date().nullable().optional(),
+	mergeCommitSha: z.string().nullable().optional(),
+	assignee: SimpleUserSchema.nullable().optional(),
+	assignees: z.array(SimpleUserSchema).nullable().optional(),
+	labels: z.array(LabelSchema).optional(),
+	milestone: MilestoneSchema.nullable().optional(),
+	commitsUrl: z.string().optional(),
+	reviewCommentsUrl: z.string().optional(),
+	reviewCommentUrl: z.string().optional(),
+	commentsUrl: z.string().optional(),
+	statusesUrl: z.string().optional(),
+	head: z
+		.object({
+			label: z.string().optional(),
+			ref: z.string().optional(),
+			sha: z.string().optional(),
+			user: SimpleUserSchema.optional(),
+			repo: RepositorySchema.nullable().optional(),
+		})
+		.optional(),
+	base: z
+		.object({
+			label: z.string().optional(),
+			ref: z.string().optional(),
+			sha: z.string().optional(),
+			user: SimpleUserSchema.optional(),
+			repo: RepositorySchema.optional(),
+		})
+		.optional(),
+	authorAssociation: z.string().optional(),
+	draft: z.boolean().optional(),
+	merged: z.boolean().optional(),
+	mergeable: z.boolean().nullable().optional(),
+	comments: z.number().optional(),
+	reviewComments: z.number().optional(),
+	commits: z.number().optional(),
+	additions: z.number().optional(),
+	deletions: z.number().optional(),
+	changedFiles: z.number().optional(),
+});
+
+const ReleaseAssetSchema = z.object({
+	url: z.string(),
+	browserDownloadUrl: z.string(),
+	id: z.number(),
+	nodeId: z.string(),
+	name: z.string(),
+	label: z.string().nullable(),
+	state: z.enum(['uploaded', 'open']),
+	contentType: z.string(),
+	size: z.number(),
+	downloadCount: z.number(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+});
+
+const ReleaseSchema = z.object({
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	assetsUrl: z.string().optional(),
+	uploadUrl: z.string().optional(),
+	tarballUrl: z.string().nullable().optional(),
+	zipballUrl: z.string().nullable().optional(),
+	id: z.number(),
+	nodeId: z.string().optional(),
+	tagName: z.string().optional(),
+	targetCommitish: z.string().optional(),
+	name: z.string().nullable().optional(),
+	body: z.string().nullable().optional(),
+	draft: z.boolean().optional(),
+	prerelease: z.boolean().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	publishedAt: z.coerce.date().nullable().optional(),
+	author: SimpleUserSchema.optional(),
+	assets: z.array(ReleaseAssetSchema).optional(),
+});
+
+const WorkflowSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	name: z.string(),
+	path: z.string(),
+	state: z.enum([
+		'active',
+		'deleted',
+		'disabled_fork',
+		'disabled_inactivity',
+		'disabled_manually',
+	]),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	badgeUrl: z.string().optional(),
+	deletedAt: z.coerce.date().nullable().optional(),
+});
+
+const WorkflowRunSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	name: z.string().nullable().optional(),
+	headBranch: z.string().nullable().optional(),
+	headSha: z.string().optional(),
+	path: z.string().optional(),
+	runNumber: z.number().optional(),
+	runAttempt: z.number().optional(),
+	event: z.string().optional(),
+	status: z.string().nullable().optional(),
+	conclusion: z.string().nullable().optional(),
+	workflowId: z.number().optional(),
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	displayTitle: z.string().optional(),
+});
+
+const CommentCreateResponseSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	url: z.string().optional(),
+	body: z.string().optional(),
+	bodyText: z.string().optional(),
+	bodyHtml: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	user: z
+		.object({
+			login: z.string(),
+			id: z.number(),
+			nodeId: z.string().optional(),
+			avatarUrl: z.string().optional(),
+		})
+		.optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	issueUrl: z.string().optional(),
+});
+
+const PullRequestReviewSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	user: z
+		.object({
+			login: z.string(),
+			id: z.number(),
+		})
+		.optional(),
+	body: z.string().optional(),
+	state: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	pullRequestUrl: z.string().optional(),
+	submittedAt: z.coerce.date().nullable().optional(),
+	commitId: z.string().nullable().optional(),
+});
+
+const RepositoryBranchesListResponseSchema = z.array(
+	z.object({
+		name: z.string(),
+		commit: z.object({
+			sha: z.string(),
+			url: z.string(),
+		}),
+		protected: z.boolean(),
+	}),
+);
+
+const RepositoryCommitsListResponseSchema = z.array(
+	z.object({
+		url: z.string().optional(),
+		sha: z.string(),
+		nodeId: z.string().optional(),
+		htmlUrl: z.string().optional(),
+		commentsUrl: z.string().optional(),
+		commit: z.object({
+			url: z.string().optional(),
+			author: z
+				.object({
+					name: z.string(),
+					email: z.string(),
+					date: z.coerce.date().nullable().optional(),
+				})
+				.nullable()
+				.optional(),
+			committer: z
+				.object({
+					name: z.string(),
+					email: z.string(),
+					date: z.coerce.date().nullable().optional(),
+				})
+				.nullable()
+				.optional(),
+			message: z.string(),
+			commentCount: z.number().optional(),
+			tree: z
+				.object({
+					sha: z.string(),
+					url: z.string().optional(),
+				})
+				.optional(),
+		}),
+		author: z
+			.object({
+				login: z.string(),
+				id: z.number(),
+			})
+			.nullable()
+			.optional(),
+		committer: z
+			.object({
+				login: z.string(),
+				id: z.number(),
+			})
+			.nullable()
+			.optional(),
+		parents: z
+			.array(
+				z.object({
+					sha: z.string(),
+					url: z.string().optional(),
+					htmlUrl: z.string().optional(),
+				}),
+			)
+			.optional(),
+	}),
+);
+
+const RepositoryContentGetResponseSchema = z.union([
+	z.object({
+		type: z.literal('file'),
+		encoding: z.string().optional(),
+		size: z.number().optional(),
+		name: z.string(),
+		path: z.string().optional(),
+		content: z.string().optional(),
+		sha: z.string(),
+		url: z.string().optional(),
+		gitUrl: z.string().nullable().optional(),
+		htmlUrl: z.string().nullable().optional(),
+		downloadUrl: z.string().nullable().optional(),
+	}),
+	z.object({
+		type: z.literal('dir'),
+		name: z.string(),
+		path: z.string().optional(),
+		sha: z.string(),
+		size: z.number().optional(),
+		url: z.string().optional(),
+		gitUrl: z.string().nullable().optional(),
+		htmlUrl: z.string().nullable().optional(),
+		downloadUrl: z.string().nullable().optional(),
+	}),
+	z.array(
+		z.object({
+			type: z.enum(['file', 'dir', 'submodule', 'symlink']),
+			size: z.number().optional(),
+			name: z.string(),
+			path: z.string().optional(),
+			sha: z.string(),
+			url: z.string().optional(),
+			gitUrl: z.string().nullable().optional(),
+			htmlUrl: z.string().nullable().optional(),
+			downloadUrl: z.string().nullable().optional(),
+		}),
+	),
+]);
+
+const CommentSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	url: z.string().optional(),
+	htmlUrl: z.string().optional(),
+	issueUrl: z.string().optional(),
+	body: z.string().optional(),
+	authorAssociation: z.string().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+});
+
+const DiscussionCategorySchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	repositoryId: z.number().optional(),
+	emoji: z.string().optional(),
+	name: z.string(),
+	description: z.string().optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	slug: z.string().optional(),
+	isAnswerable: z.boolean().optional(),
+});
+
+const DiscussionEndpointSchema = z.object({
+	id: z.number(),
+	nodeId: z.string().optional(),
+	number: z.number(),
+	title: z.string(),
+	body: z.string().nullable().optional(),
+	htmlUrl: z.string().optional(),
+	repositoryUrl: z.string().optional(),
+	state: z.string().optional(),
+	locked: z.boolean().optional(),
+	comments: z.number().optional(),
+	authorAssociation: z.string().optional(),
+	category: DiscussionCategorySchema.optional(),
+	createdAt: z.coerce.date().nullable().optional(),
+	updatedAt: z.coerce.date().nullable().optional(),
+	answerChosenAt: z.coerce.date().nullable().optional(),
+});
+
+const SearchPullRequestMarkerSchema = z
+	.object({
+		url: z.string().optional(),
+		htmlUrl: z.string().optional(),
+		diffUrl: z.string().optional(),
+		patchUrl: z.string().optional(),
+		mergedAt: z.coerce.date().nullable().optional(),
+	})
+	.loose();
+
+const SearchIssueSchema = IssueSchema.extend({
+	score: z.number(),
+	pullRequest: SearchPullRequestMarkerSchema.optional(),
+	repository: RepositorySchema.optional(),
+}).loose();
+
+const SearchRepositorySchema = RepositorySchema.extend({
+	score: z.number(),
+	watchers: z.number().optional(),
+}).loose();
+
+const SearchUserSchema = SimpleUserSchema.extend({
+	score: z.number(),
+}).loose();
+
+const SearchIssuesResponseSchema = z
+	.object({
+		totalCount: z.number(),
+		incompleteResults: z.boolean(),
+		items: z.array(SearchIssueSchema),
+	})
+	.loose();
+
+const SearchRepositoriesResponseSchema = z
+	.object({
+		totalCount: z.number(),
+		incompleteResults: z.boolean(),
+		items: z.array(SearchRepositorySchema),
+	})
+	.loose();
+
+const SearchUsersResponseSchema = z
+	.object({
+		totalCount: z.number(),
+		incompleteResults: z.boolean(),
+		items: z.array(SearchUserSchema),
+	})
+	.loose();
+
+const StargazerEntrySchema = z.object({
+	starredAt: z.coerce.date(),
+	user: SimpleUserSchema,
+});
+
+const RepositoriesListStargazersResponseSchema = z.array(StargazerEntrySchema);
+
+export type StargazerEntry = z.infer<typeof StargazerEntrySchema>;
+export type RepositoriesListStargazersResponse = z.infer<
+	typeof RepositoriesListStargazersResponseSchema
+>;
+
+export const GithubEndpointOutputSchemas = {
+	issuesList: z.array(IssueSchema),
+	issuesGet: IssueSchema,
+	issuesCreate: IssueSchema,
+	issuesUpdate: IssueSchema,
+	issuesCreateComment: CommentCreateResponseSchema,
+	pullRequestsList: z.array(PullRequestSchema),
+	pullRequestsGet: PullRequestSchema,
+	pullRequestsListReviews: z.array(PullRequestReviewSchema),
+	pullRequestsCreateReview: PullRequestReviewSchema,
+	repositoriesList: z.array(RepositorySchema),
+	repositoriesGet: RepositorySchema,
+	repositoriesListBranches: RepositoryBranchesListResponseSchema,
+	repositoriesListCommits: RepositoryCommitsListResponseSchema,
+	repositoriesGetContent: RepositoryContentGetResponseSchema,
+	eventsList: z.array(EventSchema),
+	eventsListForNetwork: z.array(EventSchema),
+	eventsListForOrg: z.array(EventSchema),
+	eventsListForRepository: z.array(EventSchema),
+	eventsListForUser: z.array(EventSchema),
+	eventsListForUserOrg: z.array(EventSchema),
+	eventsListPublicForUser: z.array(EventSchema),
+	eventsListReceivedForUser: z.array(EventSchema),
+	eventsListPublicReceivedForUser: z.array(EventSchema),
+	repositoriesStar: z.boolean(),
+	repositoriesUnstar: z.boolean(),
+	repositoriesCheckStarred: z.object({ starred: z.boolean() }),
+	repositoriesListStarred: z.array(RepositorySchema),
+	repositoriesListStargazers: RepositoriesListStargazersResponseSchema,
+	releasesList: z.array(ReleaseSchema),
+	releasesGet: ReleaseSchema,
+	releasesCreate: ReleaseSchema,
+	releasesUpdate: ReleaseSchema,
+	workflowsList: z
+		.object({
+			totalCount: z.number().optional(),
+			workflows: z.array(WorkflowSchema).optional(),
+		})
+		.loose(),
+	workflowsGet: WorkflowSchema,
+	workflowsListRuns: z
+		.object({
+			totalCount: z.number().optional(),
+			workflowRuns: z.array(WorkflowRunSchema).optional(),
+		})
+		.loose(),
+	discussionsList: z.array(DiscussionEndpointSchema),
+	discussionsGet: DiscussionEndpointSchema,
+	forksList: z.array(RepositorySchema),
+	forksCreate: RepositorySchema,
+	commentsList: z.array(CommentSchema),
+	commentsListForIssue: z.array(CommentSchema),
+	commentsGet: CommentSchema,
+	commentsUpdate: CommentSchema,
+	commentsDelete: z.void(),
+	usersList: z.array(SimpleUserSchema),
+	usersGet: UserSchema,
+	usersGetById: UserSchema,
+	usersGetAuthenticated: UserSchema,
+	usersUpdate: UserSchema,
+	usersGetHovercard: z.object({
+		contexts: z.array(
+			z.object({
+				message: z.string(),
+				octicon: z.string(),
+			}),
+		),
+	}),
+	searchIssues: SearchIssuesResponseSchema,
+	searchRepositories: SearchRepositoriesResponseSchema,
+	searchUsers: SearchUsersResponseSchema,
+} as const;
+
+export type GithubEndpointOutputs = {
+	[K in keyof typeof GithubEndpointOutputSchemas]: z.infer<
+		(typeof GithubEndpointOutputSchemas)[K]
+	>;
+};
+
+export type IssuesListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.issuesList
+>;
+export type IssueGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.issuesGet
+>;
+export type IssueCreateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.issuesCreate
+>;
+export type IssueUpdateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.issuesUpdate
+>;
+export type CommentCreateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.issuesCreateComment
+>;
+
+export type PullRequestsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.pullRequestsList
+>;
+export type PullRequestGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.pullRequestsGet
+>;
+export type PullRequestReviewListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.pullRequestsListReviews
+>;
+export type PullRequestReviewCreateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.pullRequestsCreateReview
+>;
+
+export type RepositoriesListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.repositoriesList
+>;
+export type RepositoryGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.repositoriesGet
+>;
+export type RepositoryBranchesListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.repositoriesListBranches
+>;
+export type RepositoryCommitsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.repositoriesListCommits
+>;
+export type EventsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.eventsList
+>;
+/** @deprecated Use EventsListResponse instead */
+export type RepositoryEventsListResponse = EventsListResponse;
+export type RepositoryContentGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.repositoriesGetContent
+>;
+
+export type ReleasesListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.releasesList
+>;
+export type ReleaseGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.releasesGet
+>;
+export type ReleaseCreateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.releasesCreate
+>;
+export type ReleaseUpdateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.releasesUpdate
+>;
+
+export type WorkflowsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.workflowsList
+>;
+export type WorkflowGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.workflowsGet
+>;
+export type WorkflowRunsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.workflowsListRuns
+>;
+
+export type DiscussionsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.discussionsList
+>;
+export type DiscussionGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.discussionsGet
+>;
+export type ForksListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.forksList
+>;
+export type ForkCreateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.forksCreate
+>;
+
+export type CommentsListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.commentsList
+>;
+export type CommentGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.commentsGet
+>;
+export type CommentUpdateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.commentsUpdate
+>;
+
+export type UsersListResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.usersList
+>;
+export type UserGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.usersGet
+>;
+export type UserUpdateResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.usersUpdate
+>;
+export type UserHovercardGetResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.usersGetHovercard
+>;
+
+export type SearchIssuesResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.searchIssues
+>;
+export type SearchRepositoriesResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.searchRepositories
+>;
+export type SearchUsersResponse = z.infer<
+	typeof GithubEndpointOutputSchemas.searchUsers
+>;

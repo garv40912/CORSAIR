@@ -1,0 +1,140 @@
+import type { ZodTypeAny } from 'zod';
+import type { CorsairInternalConfig } from './core';
+import { CORSAIR_INTERNAL } from './core';
+// Import these directly from their source modules (not the ./core barrel) so
+// inspect.ts and core/index.ts don't form a circular chunk dependency.
+import type {
+	CorsairClient,
+	CorsairSingleTenantClient,
+	CorsairTenantWrapper,
+} from './core/client';
+import type { FormFieldSchema, ListOperationsOptions } from './core/inspect';
+import {
+	formatDocSchemaShape,
+	getSchema as getSchemaCore,
+	getStructuredSchema as getStructuredSchemaCore,
+	listOperations as listOperationsCore,
+} from './core/inspect';
+import type { CorsairPlugin } from './core/plugins';
+
+export type { ListOperationsOptions, FormFieldSchema };
+export { formatDocSchemaShape };
+
+/**
+ * Any form of Corsair instance: single-tenant client (`createCorsair()`),
+ * multi-tenant wrapper (`createCorsair({ multiTenancy: true })`), or tenant-scoped
+ * client (`corsair.withTenant()`).
+ *
+ * Mixed type arguments are deliberate: the two clients are matched structurally
+ * (empty plugin set is their common supertype), while the wrapper is matched by
+ * its plugin tuple and so needs the open array — an empty tuple rejects a real one.
+ */
+export type AnyCorsairInstance =
+	| CorsairSingleTenantClient<readonly []>
+	| CorsairTenantWrapper<readonly CorsairPlugin[]>
+	| CorsairClient<readonly []>;
+
+function getPlugins(corsair: AnyCorsairInstance): readonly CorsairPlugin[] {
+	const internal = (corsair as unknown as Record<symbol, unknown>)[
+		CORSAIR_INTERNAL
+	] as CorsairInternalConfig | undefined;
+	if (!internal) {
+		throw new Error(
+			'listOperations / getSchema: invalid corsair instance. Pass the value returned by createCorsair() or corsair.withTenant().',
+		);
+	}
+	return internal.plugins;
+}
+
+/**
+ * Lists available operations (API endpoints, webhooks, or database entities) for the configured plugins.
+ * Returns a newline-separated string with one operation path per line.
+ *
+ * Accepts single-tenant instances, multi-tenant wrappers, and tenant-scoped clients.
+ *
+ * @example
+ * listOperations(corsair)
+ * // "slack.api.channels.list\nslack.api.messages.post\n..."
+ *
+ * listOperations(corsair, { plugin: 'slack' })
+ * // "slack.api.channels.list\nslack.api.messages.post\n..."
+ *
+ * listOperations(corsair, { plugin: 'slack', type: 'webhooks' })
+ * // "slack.webhooks.messages.message\nslack.webhooks.channels.created\n..."
+ */
+export function listOperations(
+	corsair: AnyCorsairInstance,
+	options?: ListOperationsOptions,
+): string {
+	const result = listOperationsCore(getPlugins(corsair), options);
+	if (typeof result === 'string') return result;
+	if (Array.isArray(result)) return result.join('\n');
+	return Object.values(result).flat().join('\n');
+}
+
+/**
+ * Returns a plain-text TypeScript-style type declaration for a specific operation path.
+ *
+ * Accepts single-tenant instances, multi-tenant wrappers, and tenant-scoped clients.
+ * Casing is ignored — the path is lowercased before lookup.
+ * If the path is not found, returns a list of available paths for self-correction.
+ *
+ * @example
+ * getSchema(corsair, 'slack.api.messages.post')
+ * // "Post a message to a channel  [write]\n\ninput {\n  channel: string\n  text?: string\n  ..."
+ *
+ * getSchema(corsair, 'slack.api.invalid')
+ * // "Path not found. Available operations:\n  slack: slack.api.channels.list, ..."
+ */
+export function getSchema(corsair: AnyCorsairInstance, path: string): string {
+	return getSchemaCore(getPlugins(corsair), path);
+}
+
+/**
+ * Returns a machine-readable, JSON-serializable form schema for a given operation path.
+ * Unlike {@link getSchema} (which returns a TypeScript-style string), this returns
+ * structured field definitions suitable for driving dynamic form UIs.
+ *
+ * Returns `null` if the path does not resolve to a known endpoint.
+ */
+export function getStructuredSchema(
+	corsair: AnyCorsairInstance,
+	path: string,
+): {
+	input: FormFieldSchema | null;
+	output: FormFieldSchema | null;
+	description?: string;
+} | null {
+	return getStructuredSchemaCore(getPlugins(corsair), path);
+}
+
+/**
+ * Returns the raw Zod input schema for an operation path, preserving its
+ * validation constraints (min/max, regex, refinements). `null` if the path is
+ * not a known endpoint.
+ */
+export function getInputSchema(
+	corsair: AnyCorsairInstance,
+	path: string,
+): ZodTypeAny | null {
+	const plugins = getPlugins(corsair);
+	const normalised = path.toLowerCase();
+	const dotIndex = normalised.indexOf('.');
+	if (dotIndex === -1) return null;
+
+	const pluginId = normalised.slice(0, dotIndex);
+	const remainder = normalised.slice(dotIndex + 1);
+	const plugin = plugins.find((p) => p.id === pluginId);
+	if (!plugin?.endpointSchemas) return null;
+
+	let endpointPath = remainder;
+	if (endpointPath.startsWith('api.')) endpointPath = endpointPath.slice(4);
+
+	// Case-insensitive match (endpointSchemas keys use camelCase)
+	for (const [key, entry] of Object.entries(plugin.endpointSchemas)) {
+		if (key.toLowerCase() === endpointPath) {
+			return entry.input ?? null;
+		}
+	}
+	return null;
+}

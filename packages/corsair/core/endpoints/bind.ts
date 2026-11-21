@@ -1,0 +1,794 @@
+import type { CorsairDatabase } from '../../db/kysely/database';
+import type { HubConfig } from '../../hub';
+import type { ManagedPricingFailedWhen } from '../../hub/contracts/managed-pricing-api';
+import type { ManagedPricingCall } from '../../hub/managed-pricing-auth';
+import {
+	answeredFailed,
+	createManagedPricingCredentialCache,
+	describeAnsweredFailure,
+	readUsageUnits,
+	reportManagedPricingCallFailed,
+	reportManagedPricingCallUsage,
+	resolveManagedPricingCall,
+} from '../../hub/managed-pricing-auth';
+import type { ManagedJobKind } from '../../hub/managed-pricing-jobs';
+import {
+	getManagedJobKinds,
+	managedJobKindFor,
+	managedJobRequestFields,
+	reportManagedJobCall,
+} from '../../hub/managed-pricing-jobs';
+import { reportPluginConnectionStatusFromBinding } from '../../hub/report-connection-status';
+import { AccountSelectionError, accountNames } from '../account-lookup';
+import { throwAuthMissingEndpointError } from '../auth/auth-missing-message';
+import { AuthMissingError } from '../auth/errors/auth-missing';
+import { CorsairKekMissingError } from '../auth/errors/kek-missing';
+import { ReconnectRequiredError } from '../auth/errors/reconnect-required';
+import type { EndpointManualConfig } from '../config/manual-connect';
+import { recordConnectRequestBestEffort } from '../connect-request/store';
+import type { CorsairErrorHandler } from '../errors';
+import { handleCorsairError } from '../errors/handler';
+import type { AccountNames } from '../permissions';
+import {
+	accountMode,
+	activeMode,
+	assertReadonlyAllowed,
+	enforcePermission,
+	evaluatePermission,
+	hasAccountModes,
+	parseDurationMs,
+	resolveAsyncApprovalMessage,
+	stricterMode,
+	stricterPolicy,
+	strictestMode,
+} from '../permissions';
+import { PermissionRequiredError } from '../permissions/errors/permission-required';
+import type {
+	CorsairKeyBuilderBase,
+	CorsairPermissionsOptions,
+	CorsairPlugin,
+	EndpointHooks,
+	EndpointMetaEntry,
+	PermissionMode,
+	PermissionPolicy,
+} from '../plugins';
+import { getPluginAuthType } from '../utils/plugin-auth';
+import { saveManagedResult } from './managed-result';
+
+const managedPricingCacheByPlugin = new Map<string, object>();
+
+function managedPricingCacheFor(pluginId: string): object {
+	let cache = managedPricingCacheByPlugin.get(pluginId);
+	if (!cache) {
+		cache = createManagedPricingCredentialCache();
+		managedPricingCacheByPlugin.set(pluginId, cache);
+	}
+	return cache;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Endpoint Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Checks if a value is an endpoint/function (has function signature).
+ * @param value - The value to check
+ * @returns True if the value is a function
+ */
+export function isEndpoint(value: unknown): value is Function {
+	return typeof value === 'function';
+}
+
+/**
+ * True when a provider call failed with HTTP 401. Plugins throw core's ApiError
+ * or their own error class; both carry the status as `status` (some as
+ * `statusCode`), sometimes on a wrapped `cause`. Provider-specific codes (a
+ * Facebook 190, a Zoho 57) stay with the plugins that know them.
+ */
+// unknown: this receives whatever an endpoint threw (a catch value has no
+// type in TypeScript, and plugins throw their own classes); the checks below
+// narrow it field by field.
+export function isUnauthorizedError(error: unknown, depth = 0): boolean {
+	if (!error || typeof error !== 'object' || depth > 2) return false;
+	const { status, statusCode, cause } = error as {
+		status?: unknown;
+		statusCode?: unknown;
+		cause?: unknown;
+	};
+	if (status === 401 || statusCode === 401) return true;
+	return isUnauthorizedError(cause, depth + 1);
+}
+
+/**
+ * Recursively binds endpoints in a tree structure with context and hooks.
+ * Handles both flat (key -> fn) and nested (key -> { key -> fn }) structures.
+ * @param endpoints - The endpoint tree to bind
+ * @param hooks - Optional hooks to apply to endpoint handlers
+ * @param ctx - The context to bind to endpoint handlers
+ * @param tree - The output tree to populate with bound endpoints
+ * @param pluginId - The ID of the plugin for error context
+ * @param errorHandler - The error handler for this plugin
+ * @param currentPath - The current path for tracking nested endpoint operations
+ * @param keyBuilder - Optional async callback to generate a key from the plugin context
+ */
+export function bindEndpointsRecursively({
+	endpoints,
+	hooks,
+	ctx,
+	tree,
+	pluginId,
+	errorHandlers,
+	currentPath = [],
+	keyBuilder,
+	permissionsConfig,
+	endpointMeta,
+	database,
+	permissionsOptions,
+	tenantId,
+	manualConfig,
+	hubConfig,
+	plugin,
+	kek,
+	allPlugins,
+	multiTenancy,
+	encryptDataAtRest,
+}: {
+	endpoints: Record<string, unknown>;
+	hooks: Record<string, unknown> | undefined;
+	ctx: Record<string, unknown>;
+	tree: Record<string, unknown>;
+	pluginId: string;
+	errorHandlers: CorsairErrorHandler;
+	currentPath: string[];
+	keyBuilder?: CorsairKeyBuilderBase;
+	/** Permission mode + per-endpoint overrides from plugin options. Composed with the caller's mode, if any. */
+	permissionsConfig?: {
+		mode: PermissionMode;
+		overrides?: Record<string, PermissionPolicy>;
+		accounts?: Record<string, PermissionMode>;
+	};
+	/** Risk level metadata per dot-notation endpoint path. Defaults riskLevel to 'write' when missing. */
+	endpointMeta?: Record<string, EndpointMetaEntry>;
+	/** Required for 'require_approval' to persist the approval record to the DB. */
+	database?: CorsairDatabase;
+	/** Global permissions config from createCorsair({ permissions: ... }). */
+	permissionsOptions?: CorsairPermissionsOptions;
+	/** Tenant ID for multi-tenant instances. Forwarded to the permission record so executePermission can scope correctly. */
+	tenantId?: string;
+	/** Manual config from createCorsair({ manual: ... }) — connect + permission review. */
+	manualConfig?: EndpointManualConfig;
+	hubConfig?: HubConfig;
+	plugin?: CorsairPlugin;
+	kek?: string;
+	allPlugins?: readonly CorsairPlugin[];
+	multiTenancy?: boolean;
+	encryptDataAtRest?: boolean;
+}): void {
+	for (const [key, value] of Object.entries(endpoints)) {
+		// we have to retype this now because it's nested webhooks
+		const nodeHooks = hooks?.[key] as Record<string, unknown> | undefined;
+
+		if (isEndpoint(value)) {
+			// it's an endpoint function - bind it with context and hooks
+			const endpointHooks = nodeHooks as EndpointHooks | undefined;
+
+			const operationPath = [...currentPath, key].join('.');
+
+			const boundFn = async (args: unknown = {}) => {
+				const endpointMetaEntry = endpointMeta?.[operationPath];
+
+				// Who the call is for, looked up only when some mode is set per account.
+				const names =
+					Object.keys(permissionsConfig?.accounts ?? {}).length > 0 ||
+					hasAccountModes(pluginId)
+						? await callAccountNames(ctx, database, kek)
+						: undefined;
+
+				// ── Readonly scope guard ──────────────────────────────────────────────────────────
+				// Enforced ahead of (and independent of) the developer's permission config: when the
+				// call runs inside a runReadonly() scope, any non-read endpoint throws immediately.
+				// Default to 'write' when no risk level is declared — conservative fallback.
+				assertReadonlyAllowed(
+					operationPath,
+					endpointMetaEntry?.riskLevel ?? 'write',
+					pluginId,
+					names,
+				);
+
+				// With encryptDataAtRest on, every call stores or logs encrypted data
+				// once the provider answers. Without a kek that store throws, after a
+				// paid or irreversible request (or an approval) has already gone out.
+				// Refuse before the permission guard and the request.
+				if (encryptDataAtRest && !kek) {
+					throw new CorsairKekMissingError();
+				}
+
+				// ── Permission guard ────────────────────────────────────────────────────────────────
+				let onPermissionComplete: (() => Promise<void>) | undefined;
+				// A mode only tightens, so a caller naming one cannot relax what the
+				// server configured.
+				const callerMode = activeMode(pluginId, names);
+				// An account's own mode stands in for the plugin's. An account whose
+				// identity couldn't be read takes the strictest any account has.
+				const configMode = names
+					? (accountMode(permissionsConfig?.accounts, names) ??
+						permissionsConfig?.mode)
+					: strictestMode(permissionsConfig?.accounts, permissionsConfig?.mode);
+				const mode = stricterMode(callerMode, configMode);
+				if (mode) {
+					const meta = endpointMetaEntry;
+					const riskLevel = meta?.riskLevel ?? 'write';
+					const configured = permissionsConfig?.overrides?.[operationPath];
+					// An override is the plugin's exception to its own mode, so a
+					// caller that tightens past that mode overrules it. A caller that
+					// does not leaves it standing: judging it against `mode` instead
+					// would count the plugin's own mode twice and drop an exception
+					// nobody asked to withdraw.
+					const tightened =
+						callerMode !== undefined &&
+						callerMode !== configMode &&
+						mode === callerMode;
+					const override = tightened
+						? stricterPolicy(
+								configured,
+								evaluatePermission(riskLevel, callerMode),
+							)
+						: configured;
+					const {
+						result: permResult,
+						reason: permReason,
+						onComplete,
+						token: permToken,
+						id: permId,
+						expiresAt: permExpiresAt,
+					} = await enforcePermission({
+						pluginId,
+						endpointPath: operationPath,
+						args,
+						mode,
+						override,
+						riskLevel,
+						meta,
+						db: database,
+						timeoutMs: permissionsOptions
+							? parseDurationMs(permissionsOptions.timeout)
+							: undefined,
+						tenantId,
+						approvalMode: permissionsOptions?.mode,
+					});
+					if (permResult === 'blocked') {
+						let msg: string;
+						if (permReason === 'denied') {
+							msg = `Action '${operationPath}' was denied by the user. Await further instructions before proceeding.`;
+						} else if (permReason === 'policy') {
+							// A scope has no config behind it to send the caller to.
+							msg = callerMode
+								? `Action '${operationPath}' is blocked by permission mode '${callerMode}'.`
+								: `Action '${operationPath}' is blocked by the permission policy. Update the corsair config to allow it.`;
+						} else if (permReason === 'timeout') {
+							msg = `Action '${operationPath}' timed out waiting for approval.`;
+						} else if (permToken && permId) {
+							msg = await resolveAsyncApprovalMessage({
+								permissionsOptions,
+								manual: manualConfig,
+								hub: hubConfig,
+								permissionId: permId,
+								permissionToken: permToken,
+								plugin: pluginId,
+								endpoint: operationPath,
+								args,
+								tenantId: tenantId ?? 'default',
+								expiresAt:
+									permExpiresAt ??
+									new Date(
+										Date.now() +
+											(permissionsOptions
+												? parseDurationMs(permissionsOptions.timeout)
+												: 10 * 60 * 1_000),
+									).toISOString(),
+								operationPath,
+							});
+						} else {
+							msg = `Action '${operationPath}' requires user approval before it can run.`;
+						}
+						const errReason =
+							permReason === 'denied' ||
+							permReason === 'policy' ||
+							permReason === 'timeout'
+								? permReason
+								: 'pending';
+						throw new PermissionRequiredError(msg, errReason);
+					}
+					onPermissionComplete = onComplete;
+				}
+
+				const call = async (
+					attemptNumber: number,
+					callCtx: Record<string, unknown>,
+					callArgs: unknown,
+				) => {
+					try {
+						return await value(callCtx, callArgs);
+					} catch (error) {
+						if (error instanceof Error) {
+							const retryStrategy = await handleCorsairError(
+								error,
+								pluginId,
+								operationPath,
+								typeof callArgs === 'object' && callArgs !== null
+									? (callArgs as Record<string, unknown>)
+									: { args: callArgs },
+								errorHandlers,
+							);
+
+							if (attemptNumber < (retryStrategy.maxRetries || 0)) {
+								const newAttempt = attemptNumber + 1;
+
+								console.log(
+									`Retrying (${newAttempt} / ${retryStrategy.maxRetries})...`,
+								);
+
+								let delayMs: number;
+								if (retryStrategy.headersRetryAfterMs) {
+									delayMs = retryStrategy.headersRetryAfterMs;
+								} else {
+									switch (retryStrategy.retryStrategy) {
+										case 'exponential_backoff':
+											delayMs = Math.pow(2, newAttempt - 1) * 1000;
+											break;
+										case 'exponential_backoff_jitter':
+											const baseDelay = Math.pow(2, newAttempt - 1) * 1000;
+											const jitter = (Math.random() - 0.5) * 1000;
+											delayMs = Math.max(0, baseDelay + jitter);
+											break;
+										case 'linear_1s':
+											delayMs = 1000;
+											break;
+										case 'linear_2s':
+											delayMs = 2000;
+											break;
+										case 'linear_3s':
+											delayMs = 3000;
+											break;
+										case 'linear_4s':
+											delayMs = 4000;
+											break;
+										default:
+											delayMs = 1000;
+											break;
+									}
+								}
+
+								await new Promise((resolve) => setTimeout(resolve, delayMs));
+								return await call(newAttempt, callCtx, callArgs);
+							}
+						}
+						throw error;
+					}
+				};
+
+				let key: string | undefined;
+				// Set once Hub has charged for this call; a failure from here on is
+				// reported so the charge is given back.
+				let meteredCall: ManagedPricingCall | undefined;
+				// Set when Hub prices the call per unit: where the result says how
+				// many units it used.
+				let usagePath: string | undefined;
+				// Set for a provider that answers some failures with a success
+				// status: how its result says the call failed.
+				let failedWhen: ManagedPricingFailedWhen | undefined;
+				// Set when the call starts a provider job or reads one back on
+				// Corsair's key (managed-pricing-jobs.ts).
+				let managedJob: ManagedJobKind | undefined;
+				// What the key request carried, kept rather than re-read: a before
+				// hook may change `args` in place.
+				let sentJobFields: { cap?: number; jobId?: string } = {};
+				// Set once a started job is reported: it is running at the provider,
+				// so a later local failure must not give its hold back.
+				let startedJob = false;
+				// unknown: whatever the call, a hook or the permission record threw.
+				const reportIfCharged = async (error: unknown) => {
+					// A job read or a call scoped to a job is never charged, so it has
+					// nothing to give back.
+					if (
+						meteredCall &&
+						hubConfig &&
+						managedJob?.role !== 'status' &&
+						managedJob?.role !== 'scoped' &&
+						!startedJob
+					) {
+						await reportManagedPricingCallFailed(hubConfig, meteredCall, error);
+					}
+				};
+				// Right after the provider answers, before any hook or approval
+				// record that could still throw: the job exists either way.
+				// unknown: the arguments the provider got and what it returned.
+				const reportJob = async (callArgs: unknown, result: unknown) => {
+					if (!managedJob || !hubConfig || !meteredCall) return;
+					const reported = await reportManagedJobCall(
+						hubConfig,
+						managedJob,
+						meteredCall,
+						callArgs,
+						result,
+					);
+					startedJob = reported.startedJob;
+				};
+				// What the provider's answer said, read the moment it arrives: an
+				// after hook may change the result in place, and the charge follows
+				// the provider, not the hook.
+				let answer: { failure?: string; units?: number } = {};
+				// unknown: each plugin's result has its own shape; only the paths are known.
+				const readAnswer = (result: unknown) => {
+					const failure =
+						failedWhen && answeredFailed(result, failedWhen)
+							? describeAnsweredFailure(result, failedWhen)
+							: undefined;
+					const units = usagePath
+						? readUsageUnits(result, usagePath)
+						: undefined;
+					answer = {
+						...(failure !== undefined ? { failure } : {}),
+						...(units !== undefined ? { units } : {}),
+					};
+				};
+				// Sent once the hooks are done, so a hook that throws still takes the
+				// thrown-error path. An answer that says the call failed is given back
+				// like a call that threw; the result still comes back as it came. A
+				// job call reports no usage here: its usage is settled once, when a
+				// read sees the job end (reportJob).
+				const reportUsage = async () => {
+					if (!meteredCall || !hubConfig) return;
+					if (answer.failure !== undefined) {
+						await reportIfCharged(new Error(answer.failure));
+						return;
+					}
+					if (!usagePath || managedJob || answer.units === undefined) return;
+					await reportManagedPricingCallUsage(
+						hubConfig,
+						meteredCall,
+						answer.units,
+					);
+				};
+				// Search reads what a paid call returned. A job keeps only its start
+				// result; job reads and calls scoped to a job are not saved.
+				// unknown: the arguments the provider got and what it returned.
+				const saveResult = async (callArgs: unknown, result: unknown) => {
+					if (
+						!meteredCall ||
+						answer.failure !== undefined ||
+						managedJob?.role === 'status' ||
+						managedJob?.role === 'scoped'
+					)
+						return;
+					await saveManagedResult({
+						database,
+						getAccountId: ctx.$getAccountId as
+							| (() => Promise<string>)
+							| undefined,
+						kek,
+						encryptDataAtRest,
+						idempotencyKey: meteredCall.idempotencyKey,
+						operation: operationPath,
+						args: callArgs,
+						result,
+					});
+				};
+				// The keyBuilder adds `_refreshAuth` to this ctx, and an OAuth
+				// plugin calls it to refresh the token after a 401. The endpoint
+				// must get this ctx, not a new copy of the original one.
+				// unknown: ctx carries each plugin's own options, keys and helpers, so
+				// no shared type covers its values; `call` takes it the same way.
+				const endpointCtx: Record<string, unknown> = {
+					...ctx,
+					meteredOperationId: operationPath,
+				};
+				const ctxTenantId =
+					typeof ctx.tenantId === 'string' ? ctx.tenantId : undefined;
+				const pluginAuthType = plugin ? getPluginAuthType(plugin) : undefined;
+				// An auth failure (no credentials, or a refresh the provider refused)
+				// is reported as an unverified connection, and its connect link is
+				// recorded for the connect dialog. Anything else is rethrown as is.
+				// unknown: err is a caught value, from a keyBuilder or a refresh.
+				const raiseAuthError = async (err: unknown): Promise<never> => {
+					// Hub already minted a scoped connect link and put it on the typed
+					// error — report the connection unverified and rethrow it intact.
+					if (err instanceof ReconnectRequiredError) {
+						if (plugin && hubConfig) {
+							reportPluginConnectionStatusFromBinding({
+								hub: hubConfig,
+								database,
+								kek,
+								plugins: allPlugins ?? [],
+								plugin,
+								tenantId,
+								verified: false,
+							});
+						}
+						await recordConnectRequestBestEffort(database, {
+							tenantId: err.tenantId ?? tenantId,
+							plugin: err.plugin,
+							connectUrl: err.connectUrl,
+							encryptDataAtRest,
+							kek: encryptDataAtRest ? kek : undefined,
+						});
+						throw err;
+					}
+					if (err instanceof AuthMissingError) {
+						if (plugin && hubConfig) {
+							reportPluginConnectionStatusFromBinding({
+								hub: hubConfig,
+								database,
+								kek,
+								plugins: allPlugins ?? [],
+								plugin,
+								tenantId,
+								verified: false,
+							});
+						}
+						// throwAuthMissingEndpointError mints the scoped link and rethrows
+						// the enriched error; capture that link for the connect dialog.
+						try {
+							await throwAuthMissingEndpointError({
+								error: err,
+								manual: manualConfig,
+								hub: hubConfig,
+								plugin,
+								tenantId,
+								database,
+								kek,
+								plugins: allPlugins,
+								multiTenancy,
+							});
+						} catch (enriched) {
+							if (enriched instanceof AuthMissingError) {
+								await recordConnectRequestBestEffort(database, {
+									tenantId: enriched.tenantId ?? tenantId,
+									plugin: enriched.pluginId,
+									connectUrl: enriched.connectUrl,
+									encryptDataAtRest,
+									kek: encryptDataAtRest ? kek : undefined,
+								});
+							}
+							throw enriched;
+						}
+					}
+					throw err;
+				};
+				try {
+					if (pluginAuthType === 'managed_pricing' && hubConfig) {
+						const cache = managedPricingCacheFor(pluginId);
+						managedJob = managedJobKindFor(
+							await getManagedJobKinds(hubConfig, cache),
+							pluginId,
+							operationPath,
+						);
+						sentJobFields = managedJobRequestFields(managedJob, args);
+						const resolved = await resolveManagedPricingCall(
+							{
+								hub: hubConfig,
+								tenantId: ctxTenantId ?? tenantId,
+								meteredOperationId: operationPath,
+							},
+							{
+								plugin: pluginId,
+								cache,
+								operation: operationPath,
+								...sentJobFields,
+							},
+						);
+						// Hub names a job start in its own answer too, so the job is
+						// recorded even when its table could not be read.
+						if (!managedJob && resolved.startedJobIdPath) {
+							managedJob = {
+								plugin: pluginId,
+								operation: operationPath,
+								role: 'start',
+								id_path: resolved.startedJobIdPath,
+								status_operation: '',
+							};
+						}
+						key = resolved.apiKey;
+						meteredCall = resolved.call;
+						usagePath = resolved.usagePath;
+						failedWhen = resolved.failedWhen;
+					} else if (keyBuilder) {
+						key = await keyBuilder(endpointCtx, 'endpoint');
+					}
+				} catch (err) {
+					await raiseAuthError(err);
+				}
+
+				// The endpoint gets at most one refresh-and-retry after a 401, from
+				// its own code or from core below, never both.
+				const refreshAuth =
+					typeof endpointCtx._refreshAuth === 'function'
+						? (endpointCtx._refreshAuth as () => Promise<string>)
+						: undefined;
+				let refreshedThisCall = false;
+				if (refreshAuth) {
+					endpointCtx._refreshAuth = async () => {
+						refreshedThisCall = true;
+						try {
+							return await refreshAuth();
+						} catch (refreshError) {
+							return await raiseAuthError(refreshError);
+						}
+					};
+				}
+				// A 401 the endpoint did not handle itself: refresh the token once
+				// (a revoked or rotated token can still look fresh) and call again.
+				// Only for reads: the retry runs the whole endpoint again, and a write
+				// that makes several requests may have landed one before the 401.
+				// Writes keep the plugin's own handling, which can retry just the
+				// request that failed.
+				const retriesUnauthorized =
+					(endpointMetaEntry?.riskLevel ?? 'write') === 'read';
+				// unknown: the same ctx and args `call` takes; each endpoint's own
+				// schema validates its args, so none is known here.
+				const callWithAuthRetry = async (
+					callCtx: Record<string, unknown>,
+					callArgs: unknown,
+				) => {
+					try {
+						return await call(0, callCtx, callArgs);
+					} catch (error) {
+						const refresh = callCtx._refreshAuth;
+						if (
+							refreshedThisCall ||
+							!retriesUnauthorized ||
+							plugin?.refreshOnUnauthorized === false ||
+							typeof refresh !== 'function' ||
+							!isUnauthorizedError(error)
+						) {
+							throw error;
+						}
+						const freshKey = await (refresh as () => Promise<string>)();
+						return await call(0, { ...callCtx, key: freshKey }, callArgs);
+					}
+				};
+
+				if (!endpointHooks?.before && !endpointHooks?.after) {
+					let res: Awaited<ReturnType<typeof call>>;
+					// Recording a completed approval is inside: if it throws, the
+					// caller gets an error, so the call is refunded like any other.
+					try {
+						res = await callWithAuthRetry({ ...endpointCtx, key }, args);
+						readAnswer(res);
+						await reportJob(args, res);
+						await onPermissionComplete?.();
+					} catch (error) {
+						await reportIfCharged(error);
+						throw error;
+					}
+					await saveResult(args, res);
+					await reportUsage();
+					if (plugin && hubConfig) {
+						reportPluginConnectionStatusFromBinding({
+							hub: hubConfig,
+							database,
+							kek,
+							plugins: allPlugins ?? [],
+							plugin,
+							tenantId,
+							verified: true,
+						});
+					}
+					return res;
+				}
+
+				const ctxWithKey = { ...endpointCtx, key };
+				let res: Awaited<ReturnType<typeof call>>;
+				let sentArgs: unknown = args;
+				try {
+					const beforeResult = endpointHooks.before
+						? await endpointHooks.before(ctxWithKey, args)
+						: {
+								ctx: ctxWithKey,
+								args,
+								continue: true as const,
+								passToAfter: undefined,
+							};
+					if (beforeResult.continue === false) {
+						// Charged for a call the hook then stopped: nothing ran.
+						await reportIfCharged(new Error('Stopped by a before hook'));
+						return;
+					}
+					// Hub held credits for the cap, or checked the job id, it was
+					// sent with the key request; a hook may not change either after.
+					if (managedJob) {
+						const final = managedJobRequestFields(
+							managedJob,
+							beforeResult.args,
+						);
+						if (
+							sentJobFields.cap !== final.cap ||
+							sentJobFields.jobId !== final.jobId
+						) {
+							throw new Error(
+								`A before hook changed ${operationPath}'s ${managedJob.role === 'start' ? 'cap' : 'job id'} after Corsair checked it, so the call did not run.`,
+							);
+						}
+					}
+					sentArgs = beforeResult.args;
+					res = await callWithAuthRetry(beforeResult.ctx, beforeResult.args);
+					readAnswer(res);
+					await reportJob(beforeResult.args, res);
+					await endpointHooks.after?.(
+						beforeResult.ctx,
+						res,
+						beforeResult.passToAfter,
+					);
+					await onPermissionComplete?.();
+				} catch (error) {
+					await reportIfCharged(error);
+					throw error;
+				}
+				await saveResult(sentArgs, res);
+				await reportUsage();
+				if (plugin && hubConfig) {
+					reportPluginConnectionStatusFromBinding({
+						hub: hubConfig,
+						database,
+						kek,
+						plugins: allPlugins ?? [],
+						plugin,
+						tenantId,
+						verified: true,
+					});
+				}
+				return res;
+			};
+
+			tree[key] = boundFn;
+		} else if (value && typeof value === 'object') {
+			// it's a nested object - recurse into it
+			const nestedTree: Record<string, unknown> = {};
+
+			bindEndpointsRecursively({
+				endpoints: value as Record<string, unknown>,
+				hooks: nodeHooks as Record<string, unknown> | undefined,
+				ctx,
+				tree: nestedTree,
+				pluginId,
+				errorHandlers,
+				currentPath: [...currentPath, key],
+				keyBuilder,
+				permissionsConfig,
+				endpointMeta,
+				database,
+				permissionsOptions,
+				tenantId,
+				manualConfig,
+				hubConfig,
+				plugin,
+				kek,
+				allPlugins,
+				multiTenancy,
+				encryptDataAtRest,
+			});
+
+			tree[key] = nestedTree;
+		}
+	}
+}
+
+// The names a call's account answers to.
+async function callAccountNames(
+	// The plugin context is an open bag; only $getAccountId is read, and checked.
+	ctx: Record<string, unknown>,
+	database: CorsairDatabase | undefined,
+	kek: string | undefined,
+): Promise<AccountNames | undefined> {
+	const getAccountId = ctx.$getAccountId as (() => Promise<string>) | undefined;
+	if (!getAccountId || !database) return undefined;
+	// Naming no account among several is refused here; a missing account is
+	// left to the call itself, which reports it as auth-missing.
+	const names = await getAccountId()
+		.then((id) => accountNames(database.db, id, kek))
+		.catch((err) => {
+			if (err instanceof AccountSelectionError) throw err;
+			return undefined;
+		});
+	return names?.ref ? names : undefined;
+}

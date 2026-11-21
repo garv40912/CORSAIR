@@ -1,0 +1,218 @@
+---
+title: "OCR.space API reference"
+sidebarTitle: "API"
+description: "API reference for the OCR.space plugin in Corsair: every `ocrspace.api.*` operation with its input and output types, taken from the plugin's Zod schemas."
+---
+
+<Info>
+**New to Corsair?** See [API access](/concepts/api), [authentication](/concepts/auth), and [error handling](/concepts/error-handling).
+</Info>
+
+## Account
+
+### conversions
+
+`account.conversions`
+
+Retrieve conversion counts for the current month per OCR engine, updated once a day
+
+**Risk:** `read`
+
+```ts
+await corsair.ocrspace.api.account.conversions({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `startDate` | `lastMonth` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `count_total` | `number \| null` | No | — |
+| `count_engine1` | `number \| null` | No | — |
+| `count_engine2` | `number \| null` | No | — |
+| `count_engine3` | `number \| null` | No | — |
+
+
+
+---
+
+## Ocr
+
+### parse
+
+`ocr.parse`
+
+Extract text from an image or PDF supplied as exactly one of a URL, a file upload (pass a File so the filename is sent, or set filetype), or a base64 data URI. The file upload takes the file as a public link, base64 or a Blob; on Corsair, pass a Files id.
+
+**Risk:** `read`
+
+```ts
+await corsair.ocrspace.api.ocr.parse({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | `string` | No | — |
+| `file` | `string \| object \| custom` | No | The image or PDF to upload: a public URL, &#123;url, filename?, contentType?&#125;, or &#123;base64, filename?, contentType?&#125;; a Blob or File from TypeScript. On Corsair, pass a Files id (fil_…). Set filetype when neither its name nor its type says what it is. |
+| `base64Image` | `string` | No | — |
+| `language` | `string` | No | — |
+| `OCREngine` | `1 \| 2 \| 3` | No | — |
+| `isOverlayRequired` | `boolean` | No | — |
+| `detectOrientation` | `boolean` | No | — |
+| `scale` | `boolean` | No | — |
+| `isTable` | `boolean` | No | — |
+| `isCreateSearchablePdf` | `boolean` | No | — |
+| `isSearchablePdfHideTextLayer` | `boolean` | No | — |
+| `filetype` | `PDF \| GIF \| PNG \| JPG \| TIF \| BMP` | No | — |
+
+<AccordionGroup>
+<Accordion title="file full type">
+
+```ts
+string | {
+  url: string,
+  filename?: string,
+  contentType?: string
+} | {
+  base64: string,
+  filename?: string,
+  contentType?: string
+} | custom
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `ParsedResults` | `object[] \| null` | No | — |
+| `OCRExitCode` | `number \| null` | No | — |
+| `IsErroredOnProcessing` | `boolean \| null` | No | — |
+| `ErrorMessage` | `string \| string[] \| null` | No | — |
+| `ErrorDetails` | `string \| null` | No | — |
+| `SearchablePDFURL` | `string \| null` | No | — |
+| `ProcessingTimeInMilliseconds` | `string \| number \| null` | No | — |
+
+<AccordionGroup>
+<Accordion title="ParsedResults full type">
+
+```ts
+{
+  ParsedText?: string | null,
+  TextOrientation?: string | null,
+  FileParseExitCode?: number | null,
+  TextOverlay?: {
+    Lines?: {
+      LineText?: string | null,
+      Words?: {
+        WordText?: string | null,
+        Left?: number | null,
+        Top?: number | null,
+        Height?: number | null,
+        Width?: number | null
+      }[] | null,
+      MaxHeight?: number | null,
+      MinTop?: number | null
+    }[] | null,
+    HasOverlay?: boolean | null,
+    Message?: string | null
+  } | null,
+  ErrorMessage?: string | string[] | null,
+  ErrorDetails?: string | null
+}[] | null
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+
+### parseImageUrl
+
+`ocr.parseImageUrl`
+
+Extract text from an image at a public URL using the simplified GET endpoint
+
+**Risk:** `read`
+
+```ts
+await corsair.ocrspace.api.ocr.parseImageUrl({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | `string` | Yes | — |
+| `language` | `string` | No | — |
+| `OCREngine` | `1 \| 2 \| 3` | No | — |
+| `isOverlayRequired` | `boolean` | No | — |
+| `detectOrientation` | `boolean` | No | — |
+| `scale` | `boolean` | No | — |
+| `isTable` | `boolean` | No | — |
+| `isCreateSearchablePdf` | `boolean` | No | — |
+| `isSearchablePdfHideTextLayer` | `boolean` | No | — |
+| `filetype` | `PDF \| GIF \| PNG \| JPG \| TIF \| BMP` | No | — |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `ParsedResults` | `object[] \| null` | No | — |
+| `OCRExitCode` | `number \| null` | No | — |
+| `IsErroredOnProcessing` | `boolean \| null` | No | — |
+| `ErrorMessage` | `string \| string[] \| null` | No | — |
+| `ErrorDetails` | `string \| null` | No | — |
+| `SearchablePDFURL` | `string \| null` | No | — |
+| `ProcessingTimeInMilliseconds` | `string \| number \| null` | No | — |
+
+<AccordionGroup>
+<Accordion title="ParsedResults full type">
+
+```ts
+{
+  ParsedText?: string | null,
+  TextOrientation?: string | null,
+  FileParseExitCode?: number | null,
+  TextOverlay?: {
+    Lines?: {
+      LineText?: string | null,
+      Words?: {
+        WordText?: string | null,
+        Left?: number | null,
+        Top?: number | null,
+        Height?: number | null,
+        Width?: number | null
+      }[] | null,
+      MaxHeight?: number | null,
+      MinTop?: number | null
+    }[] | null,
+    HasOverlay?: boolean | null,
+    Message?: string | null
+  } | null,
+  ErrorMessage?: string | string[] | null,
+  ErrorDetails?: string | null
+}[] | null
+```
+</Accordion>
+</AccordionGroup>
+
+
+
+---
+

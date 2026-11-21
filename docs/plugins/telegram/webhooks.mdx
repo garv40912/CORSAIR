@@ -1,0 +1,324 @@
+---
+title: "Telegram webhooks"
+sidebarTitle: "Webhooks"
+description: "Telegram incoming webhooks in Corsair: the event paths to subscribe to, the payload each event carries, and the response data."
+---
+
+The Telegram plugin handles incoming webhooks. Point your provider’s subscription URL at your Corsair HTTP handler (see [Overview](/plugins/telegram/overview) for setup context and the exact URL shape).
+
+<Info>
+**New to Corsair?** See [webhooks](/concepts/webhooks) and [hooks](/concepts/hooks).
+</Info>
+
+## Webhook map
+
+- `callbackQuery`
+  - `callbackQuery` (`callbackQuery.callbackQuery`)
+- `channelPost`
+  - `channelPost` (`channelPost.channelPost`)
+- `editedChannelPost`
+  - `editedChannelPost` (`editedChannelPost.editedChannelPost`)
+- `editedMessage`
+  - `editedMessage` (`editedMessage.editedMessage`)
+- `inlineQuery`
+  - `inlineQuery` (`inlineQuery.inlineQuery`)
+- `message`
+  - `message` (`message.message`)
+- `poll`
+  - `poll` (`poll.poll`)
+- `preCheckoutQuery`
+  - `preCheckoutQuery` (`preCheckoutQuery.preCheckoutQuery`)
+- `shippingQuery`
+  - `shippingQuery` (`shippingQuery.shippingQuery`)
+
+## HTTP handler setup
+
+```ts app/api/webhook/route.ts
+import { processWebhook } from "corsair";
+import { corsair } from "@/server/corsair";
+
+export async function POST(request: Request) {
+    const headers = Object.fromEntries(request.headers);
+    // With multiTenancy, give each tenant its own URL (/api/webhook?tenantId=acme):
+    // the query says whose account, secret and hooks handle the delivery.
+    const query = Object.fromEntries(new URL(request.url).searchParams);
+    // The raw text, not request.json(): signatures are checked over the exact bytes sent.
+    const body = await request.text();
+    const result = await processWebhook(corsair, headers, body, query);
+    if (!result.plugin) {
+        return Response.json({ success: false }, { status: 404 });
+    }
+    // A refusal (bad signature) carries no status and answers 400; a handler
+    // that threw comes back with 500, so the sender retries it.
+    const status =
+        result.response?.success === false ? (result.response.statusCode ?? 400) : 200;
+    return Response.json(result.response ?? { success: true }, {
+        status,
+        headers: result.responseHeaders,
+    });
+}
+```
+
+## Events
+
+## Callback Query
+
+### Callback Query
+
+`callbackQuery.callbackQuery`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        callbackQuery: {
+            callbackQuery: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Channel Post
+
+### Channel Post
+
+`channelPost.channelPost`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        channelPost: {
+            channelPost: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Edited Channel Post
+
+### Edited Channel Post
+
+`editedChannelPost.editedChannelPost`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        editedChannelPost: {
+            editedChannelPost: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Edited Message
+
+### Edited Message
+
+`editedMessage.editedMessage`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        editedMessage: {
+            editedMessage: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Inline Query
+
+### Inline Query
+
+`inlineQuery.inlineQuery`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        inlineQuery: {
+            inlineQuery: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Message
+
+### Message
+
+`message.message`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        message: {
+            message: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Poll
+
+### Poll
+
+`poll.poll`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        poll: {
+            poll: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Pre Checkout Query
+
+### Pre Checkout Query
+
+`preCheckoutQuery.preCheckoutQuery`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        preCheckoutQuery: {
+            preCheckoutQuery: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+
+## Shipping Query
+
+### Shipping Query
+
+`shippingQuery.shippingQuery`
+
+**Payload:** `unknown`
+
+
+**`webhookHooks` example**
+
+```ts
+telegram({
+    webhookHooks: {
+        shippingQuery: {
+            shippingQuery: {
+                before(ctx, args) {
+                    return { ctx, args };
+                },
+                after(ctx, response) {
+                },
+            },
+        },
+    },
+})
+```
+
+---
+

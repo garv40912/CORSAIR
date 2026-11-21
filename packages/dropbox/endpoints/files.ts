@@ -1,0 +1,194 @@
+import { logEventFromContext } from 'corsair/core';
+import type { BinaryResponse } from 'corsair/http';
+import { toFileOutput } from 'corsair/http';
+import {
+	DROPBOX_CONTENT_BASE,
+	makeAuthenticatedDropboxRequest,
+} from '../client';
+import type { DropboxEndpoints } from '../index';
+import type { DropboxEndpointOutputs } from './types';
+
+export const copy: DropboxEndpoints['filesCopy'] = async (ctx, input) => {
+	const result = await makeAuthenticatedDropboxRequest<
+		DropboxEndpointOutputs['filesCopy']
+	>('files/copy_v2', ctx, {
+		method: 'POST',
+		body: input,
+	});
+
+	if (result.metadata && ctx.db.files) {
+		try {
+			const meta = result.metadata;
+			if (meta['.tag'] === 'file') {
+				await ctx.db.files.upsertByEntityId(meta.id, {
+					...meta,
+					client_modified: meta.client_modified
+						? new Date(meta.client_modified)
+						: null,
+					server_modified: meta.server_modified
+						? new Date(meta.server_modified)
+						: null,
+				});
+			}
+		} catch (error) {
+			console.warn('Failed to save file to database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'dropbox.files.copy',
+		{ from_path: input.from_path, to_path: input.to_path },
+		'completed',
+	);
+	return result;
+};
+
+export const deleteFile: DropboxEndpoints['filesDelete'] = async (
+	ctx,
+	input,
+) => {
+	const result = await makeAuthenticatedDropboxRequest<
+		DropboxEndpointOutputs['filesDelete']
+	>('files/delete_v2', ctx, {
+		method: 'POST',
+		body: { path: input.path },
+	});
+
+	if (ctx.db.files || ctx.db.folders) {
+		try {
+			const meta = result.metadata;
+			if (meta['.tag'] === 'file' && ctx.db.files) {
+				await ctx.db.files.deleteByEntityId(meta.id);
+			} else if (meta['.tag'] === 'folder' && ctx.db.folders) {
+				await ctx.db.folders.deleteByEntityId(meta.id);
+			}
+		} catch (error) {
+			console.warn('Failed to delete file from database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'dropbox.files.delete',
+		{ path: input.path },
+		'completed',
+	);
+	return result;
+};
+
+export const download: DropboxEndpoints['filesDownload'] = async (
+	ctx,
+	input,
+) => {
+	// Dropbox's content endpoints take the arguments in the Dropbox-API-Arg
+	// header, and the reply is the file itself: read as bytes so a PDF or image
+	// survives.
+	const { bytes, contentType } =
+		await makeAuthenticatedDropboxRequest<BinaryResponse>(
+			'files/download',
+			ctx,
+			{
+				method: 'POST',
+				baseUrl: DROPBOX_CONTENT_BASE,
+				extraHeaders: {
+					'Dropbox-API-Arg': JSON.stringify({ path: input.path }),
+				},
+				responseType: 'binary',
+			},
+		);
+
+	await logEventFromContext(
+		ctx,
+		'dropbox.files.download',
+		{ path: input.path },
+		'completed',
+	);
+	// A path names the file; an `id:` or `rev:` reference doesn't.
+	const filename = input.path.startsWith('/')
+		? input.path.split('/').pop()
+		: undefined;
+	return toFileOutput(bytes, contentType, filename ? { filename } : {});
+};
+
+export const move: DropboxEndpoints['filesMove'] = async (ctx, input) => {
+	const result = await makeAuthenticatedDropboxRequest<
+		DropboxEndpointOutputs['filesMove']
+	>('files/move_v2', ctx, {
+		method: 'POST',
+		body: input,
+	});
+
+	if (result.metadata && ctx.db.files) {
+		try {
+			const meta = result.metadata;
+			if (meta['.tag'] === 'file') {
+				await ctx.db.files.upsertByEntityId(meta.id, {
+					...meta,
+					client_modified: meta.client_modified
+						? new Date(meta.client_modified)
+						: null,
+					server_modified: meta.server_modified
+						? new Date(meta.server_modified)
+						: null,
+				});
+			}
+		} catch (error) {
+			console.warn('Failed to update file in database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'dropbox.files.move',
+		{ from_path: input.from_path, to_path: input.to_path },
+		'completed',
+	);
+	return result;
+};
+
+export const upload: DropboxEndpoints['filesUpload'] = async (ctx, input) => {
+	// Dropbox upload uses content.dropboxapi.com. Metadata goes in Dropbox-API-Arg header;
+	// the request body is the raw file content (string/bytes), not JSON.
+	const result = await makeAuthenticatedDropboxRequest<
+		DropboxEndpointOutputs['filesUpload']
+	>('files/upload', ctx, {
+		method: 'POST',
+		baseUrl: DROPBOX_CONTENT_BASE,
+		extraHeaders: {
+			'Dropbox-API-Arg': JSON.stringify({
+				path: input.path,
+				mode: input.mode ?? 'add',
+				autorename: input.autorename ?? false,
+				mute: input.mute ?? false,
+				strict_conflict: input.strict_conflict ?? false,
+			}),
+			'Content-Type': 'application/octet-stream',
+		},
+		body: input.content,
+	});
+
+	if (result.id && ctx.db.files) {
+		try {
+			await ctx.db.files.upsertByEntityId(result.id, {
+				...result,
+				client_modified: result.client_modified
+					? new Date(result.client_modified)
+					: null,
+				server_modified: result.server_modified
+					? new Date(result.server_modified)
+					: null,
+			});
+		} catch (error) {
+			console.warn('Failed to save uploaded file to database:', error);
+		}
+	}
+
+	await logEventFromContext(
+		ctx,
+		'dropbox.files.upload',
+		{ path: input.path },
+		'completed',
+	);
+	return result;
+};

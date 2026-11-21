@@ -1,0 +1,54 @@
+---
+title: "MailboxLayer API reference"
+sidebarTitle: "API"
+description: "API reference for the MailboxLayer plugin in Corsair: every `mailboxlayer.api.*` operation with its input and output types, taken from the plugin's Zod schemas."
+---
+
+<Info>
+**New to Corsair?** See [API access](/concepts/api), [authentication](/concepts/auth), and [error handling](/concepts/error-handling).
+</Info>
+
+## Email
+
+### check
+
+`email.check`
+
+Validate whether an email address is correctly formatted, has valid MX records, and is deliverable via SMTP
+
+**Risk:** `read`
+
+```ts
+await corsair.mailboxlayer.api.email.check({});
+```
+
+**Input**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `email` | `string` | Yes | The email address to validate and verify |
+| `smtp` | `boolean` | No | Whether to run a real-time SMTP check (default true). Set to false for a faster format/MX-only check. |
+
+
+
+**Output**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `email` | `string` | Yes | — |
+| `did_you_mean` | `string` | Yes | — |
+| `user` | `string` | Yes | — |
+| `domain` | `string` | Yes | — |
+| `format_valid` | `boolean` | Yes | — |
+| `mx_found` | `boolean` | Yes | — |
+| `smtp_check` | `boolean` | Yes | — |
+| `catch_all` | `boolean \| null` | Yes | — |
+| `role` | `boolean` | Yes | — |
+| `disposable` | `boolean` | Yes | — |
+| `free` | `boolean` | Yes | — |
+| `score` | `number` | Yes | — |
+
+
+
+---
+
